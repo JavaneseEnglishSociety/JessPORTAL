@@ -40,6 +40,38 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Volunteer applications — joining JESS itself, distinct from signing
+    // up for one event (see /registrations above). The applicant only ever
+    // sets the fields below and status always starts "pending"; only the
+    // admin can move it to accepted/declined or write a note back.
+    //
+    // Two different read operations are deliberately split: GET (fetching
+    // one document by its exact ID) is open to anyone, because the ID
+    // itself — a random Firestore auto-ID handed to the applicant as their
+    // confirmation code — is the only thing that grants access. LIST
+    // (querying/browsing the whole collection) is admin-only, so there is
+    // no way to enumerate other people's applications without their code.
+    match /applications/{applicationId} {
+      allow create: if request.resource.data.keys().hasOnly(
+                         ['name', 'email', 'phone', 'school', 'role',
+                          'availability', 'why', 'status', 'note', 'createdAt', 'reviewedAt'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 120
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() <= 160
+                    && request.resource.data.why.size() <= 1200
+                    && request.resource.data.role in ['student', 'volunteer']
+                    && request.resource.data.status == "pending"
+                    && request.resource.data.note == "";
+      allow get: if true;
+      allow list: if isAdmin();
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'reviewedAt'])
+                    && request.resource.data.status in ['pending', 'accepted', 'declined'];
+      allow delete: if isAdmin();
+    }
+
     // ============================================================
     // JESSEDU — accounts
     // ============================================================

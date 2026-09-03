@@ -379,7 +379,19 @@ const UI_STRINGS = {
     footer_explore: "Explore", footer_involved: "Get involved",
     staff_login: "Staff login", privacy: "Privacy", terms: "Terms",
     form_name: "Your name", form_email: "Email", form_message: "Message",
-    form_send: "Send message"
+    form_send: "Send message",
+    apply_to_volunteer: "Apply to volunteer", check_status: "Check application status",
+    apply_intro: "Tell us a bit about yourself. We'll review it and let you know.",
+    school: "School", volunteer_teacher: "Volunteer as a teacher", student_join: "Join as a student",
+    availability: "When are you available?", availability_ph: "e.g. weekday evenings, weekends",
+    apply_ok_title: "Application received", apply_ok_body: "Save this code — it's the only way to check your status later.",
+    apply_ok_hint: "We'll review your application and update your status here. If you're accepted, check your email for next steps.",
+    copy_code: "Copy code", copied: "Copied!",
+    check_status_hint: "Enter the confirmation code you received when you applied.",
+    confirm_code: "Confirmation code", check: "Check",
+    code_not_found: "We couldn't find an application with that code. Double-check it and try again.",
+    status_pending: "Under review", status_accepted: "Accepted!", status_declined: "Not selected this time",
+    check_email_notice: "Please check your email for next steps."
   },
   id: {
     nav_about: "Tentang", nav_programs: "Program", nav_events: "Acara",
@@ -415,7 +427,19 @@ const UI_STRINGS = {
     footer_explore: "Jelajahi", footer_involved: "Ikut terlibat",
     staff_login: "Masuk pengurus", privacy: "Privasi", terms: "Ketentuan",
     form_name: "Nama kamu", form_email: "Email", form_message: "Pesan",
-    form_send: "Kirim pesan"
+    form_send: "Kirim pesan",
+    apply_to_volunteer: "Daftar jadi relawan", check_status: "Cek status pendaftaran",
+    apply_intro: "Ceritakan sedikit tentang dirimu. Kami akan meninjau dan menghubungi kembali.",
+    school: "Sekolah", volunteer_teacher: "Menjadi relawan pengajar", student_join: "Bergabung sebagai siswa",
+    availability: "Kapan kamu tersedia?", availability_ph: "misalnya sore hari kerja, akhir pekan",
+    apply_ok_title: "Pendaftaran diterima", apply_ok_body: "Simpan kode ini — ini satu-satunya cara untuk mengecek status kamu nanti.",
+    apply_ok_hint: "Kami akan meninjau pendaftaranmu dan memperbarui statusnya di sini. Jika diterima, periksa email untuk langkah selanjutnya.",
+    copy_code: "Salin kode", copied: "Tersalin!",
+    check_status_hint: "Masukkan kode konfirmasi yang kamu terima saat mendaftar.",
+    confirm_code: "Kode konfirmasi", check: "Cek",
+    code_not_found: "Kami tidak menemukan pendaftaran dengan kode itu. Periksa kembali dan coba lagi.",
+    status_pending: "Sedang ditinjau", status_accepted: "Diterima!", status_declined: "Belum berhasil kali ini",
+    check_email_notice: "Silakan periksa email untuk langkah selanjutnya."
   }
 };
 
@@ -521,6 +545,115 @@ async function deleteRegistration(id) {
     return true;
   } catch (e) {
     console.warn("JESS: could not delete registration.", e);
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * VOLUNTEER APPLICATIONS
+ *
+ * A dedicated pipeline, separate from event sign-ups: someone applies to
+ * join JESS itself (not a single event), staff review and accept/decline,
+ * and the applicant can check the outcome without an email round-trip.
+ *
+ * There is no backend here — this is a static site plus Firestore, with
+ * no server to send mail from. So "notify them" works two ways instead
+ * of an automatic email:
+ *   1. The applicant gets a private, unguessable confirmation code at
+ *      submit time and can look up their status with it any time
+ *      (getApplicationByCode). Firestore rules allow GET-by-exact-ID for
+ *      anyone, but forbid LIST entirely, so a code is required — it
+ *      can't be browsed or enumerated, only redeemed if you have it.
+ *   2. The admin panel's "Email applicant" button opens a pre-filled
+ *      mailto: link (recipient, subject, and a status-appropriate body
+ *      already written), so sending the real email is one click, not
+ *      copy-pasting an address by hand.
+ * ------------------------------------------------------------------ */
+const APPLICATIONS_COLLECTION = "applications";
+
+function applicationsCollection() {
+  return fsFns.collection(db, APPLICATIONS_COLLECTION);
+}
+
+async function submitApplication({ name, email, phone, school, role, availability, why }) {
+  if (!firebaseReady) return { ok: false };
+  try {
+    const ref = await fsFns.addDoc(applicationsCollection(), {
+      name: String(name || "").slice(0, 120),
+      email: String(email || "").slice(0, 160),
+      phone: String(phone || "").slice(0, 40),
+      school: String(school || "").slice(0, 160),
+      role: role === "volunteer" ? "volunteer" : "student",
+      availability: String(availability || "").slice(0, 300),
+      why: String(why || "").slice(0, 1200),
+      status: "pending",
+      note: "",
+      createdAt: Date.now(),
+      reviewedAt: null
+    });
+    return { ok: true, code: ref.id };
+  } catch (e) {
+    console.warn("JESS: application submission failed.", e);
+    return { ok: false };
+  }
+}
+
+// Public lookup by confirmation code — a GET on a known document ID.
+// Firestore rules permit this for anyone but forbid listing the
+// collection, so the code itself is what protects every applicant's
+// privacy; there is no way to browse to someone else's application.
+async function getApplicationByCode(code) {
+  if (!firebaseReady || !code) return null;
+  try {
+    const ref = fsFns.doc(db, APPLICATIONS_COLLECTION, String(code).trim());
+    const snap = await fsFns.getDoc(ref);
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    // Only the fields the applicant needs to see their own outcome —
+    // never the full document (keeps this symmetrical with what the
+    // rules actually intend to expose).
+    return { status: d.status || "pending", note: d.note || "", name: d.name || "" };
+  } catch (e) {
+    console.warn("JESS: application lookup failed.", e);
+    return null;
+  }
+}
+
+async function listApplications() {
+  if (!firebaseReady) return [];
+  try {
+    const snap = await fsFns.getDocs(applicationsCollection());
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  } catch (e) {
+    console.warn("JESS: could not load applications.", e);
+    return [];
+  }
+}
+
+async function updateApplicationStatus(id, status, note) {
+  if (!firebaseReady) return false;
+  try {
+    await fsFns.updateDoc(fsFns.doc(db, APPLICATIONS_COLLECTION, id), {
+      status,
+      note: String(note || "").slice(0, 800),
+      reviewedAt: Date.now()
+    });
+    return true;
+  } catch (e) {
+    console.warn("JESS: could not update application.", e);
+    return false;
+  }
+}
+
+async function deleteApplication(id) {
+  if (!firebaseReady) return false;
+  try {
+    await fsFns.deleteDoc(fsFns.doc(db, APPLICATIONS_COLLECTION, id));
+    return true;
+  } catch (e) {
+    console.warn("JESS: could not delete application.", e);
     return false;
   }
 }
@@ -731,6 +864,7 @@ window.JESSData = {
   login, logout, onAuthChange,
   submitMessage, listMessages, deleteMessage,
   submitRegistration, listRegistrations, deleteRegistration,
+  submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
   firebaseReady: () => firebaseReady

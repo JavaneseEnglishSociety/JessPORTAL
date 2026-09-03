@@ -69,9 +69,37 @@ Publish.
   English text**, so the toggle works immediately and you can translate
   gradually.
 
+### Volunteer applications (new)
+
+"Apply to volunteer" now opens an in-site application form instead of
+jumping to the contact form. What happens next:
+
+1. The applicant fills it in and gets a **confirmation code** on screen —
+   this is their only way to check their status later, since the site has
+   no login for applicants. Tell people to save it (there's a copy button).
+2. You review it in the new **Applications** panel — filter by Pending /
+   Accepted / Declined, read their answers, and click **Accept** or
+   **Decline**. You can add a note (e.g. "Orientation is Saturday at 10am")
+   that shows up when they check their status.
+3. The applicant checks their status any time with **"Check application
+   status"** next to the apply button. Once accepted, it tells them to
+   check their email.
+
+**On the email itself:** this is a static site with no backend, so nothing
+sends mail automatically — there's no server to send it from. The
+**"Email applicant"** button next to Accept/Decline opens your own email
+client with their address, a subject, and a status-appropriate message
+already written (including your note). Sending the real email is one
+click, not copy-pasting an address by hand — but it is still you clicking
+send, not the site doing it in the background.
+
+If you want fully automatic email later, that needs a small third-party
+service (e.g. EmailJS) or a Cloud Function — happy to wire that in
+separately if useful, since it needs an account/API key you'd set up.
+
 ### Deploy the rules again
 
-Sign-ups need a new `registrations` collection rule. Until you publish the
+Sign-ups need a `registrations` collection rule and applications need an `applications` collection rule — both are new. Until you publish the
 updated `firestore.rules`, the sign-up form will fail with a permission error.
 Firebase Console → Firestore Database → Rules → paste → Publish.
 

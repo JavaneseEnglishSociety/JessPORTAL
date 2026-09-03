@@ -545,6 +545,153 @@
     });
   }
 
+  /* ---- Volunteer application + status check -------------------------- *
+   * Separate from event sign-ups: this is applying to join JESS itself.
+   * On submit the applicant gets a confirmation code (the Firestore
+   * document ID) and is told to save it — that code is the only way
+   * (besides asking staff) to look their status up again later, since
+   * the site has no login for applicants and no backend to email them
+   * automatically.
+   * ------------------------------------------------------------------- */
+  function openApplyModal() {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(L.t("apply_to_volunteer", lang))}">
+        <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+        <h3>${esc(L.t("apply_to_volunteer", lang))}</h3>
+        <p class="panel-hint">${esc(L.t("apply_intro", lang))}</p>
+        <form id="applyForm">
+          <label for="apName">${esc(L.t("full_name", lang))}</label>
+          <input id="apName" required autocomplete="name">
+          <label for="apEmail">${esc(L.t("email", lang))}</label>
+          <input id="apEmail" type="email" required autocomplete="email">
+          <label for="apPhone">${esc(L.t("phone", lang))}</label>
+          <input id="apPhone" autocomplete="tel">
+          <label for="apSchool">${esc(L.t("school", lang))}</label>
+          <input id="apSchool" autocomplete="organization">
+          <label for="apRole">${esc(L.t("role", lang))}</label>
+          <select id="apRole">
+            <option value="volunteer">${esc(L.t("volunteer_teacher", lang))}</option>
+            <option value="student">${esc(L.t("student_join", lang))}</option>
+          </select>
+          <label for="apAvail">${esc(L.t("availability", lang))}</label>
+          <input id="apAvail" placeholder="${esc(L.t("availability_ph", lang))}">
+          <label for="apWhy">${esc(L.t("why_join", lang))}</label>
+          <textarea id="apWhy" rows="3"></textarea>
+          <button type="submit" class="btn btn-primary">${esc(L.t("send", lang))}</button>
+          <p class="form-status" id="apStatus" role="status"></p>
+        </form>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector(".modal-close").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    setTimeout(() => overlay.querySelector("#apName").focus(), 40);
+
+    overlay.querySelector("#applyForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const statusEl = overlay.querySelector("#apStatus");
+      const submitBtn = overlay.querySelector("button[type=submit]");
+      const name = overlay.querySelector("#apName").value.trim();
+      const email = overlay.querySelector("#apEmail").value.trim();
+      if (!name || !email) {
+        statusEl.className = "form-status err";
+        statusEl.textContent = L.t("required_fields", lang);
+        return;
+      }
+      submitBtn.disabled = true;
+      statusEl.className = "form-status";
+      statusEl.textContent = L.t("sending", lang);
+
+      L.submitApplication({
+        name, email,
+        phone: overlay.querySelector("#apPhone").value.trim(),
+        school: overlay.querySelector("#apSchool").value.trim(),
+        role: overlay.querySelector("#apRole").value,
+        availability: overlay.querySelector("#apAvail").value.trim(),
+        why: overlay.querySelector("#apWhy").value.trim()
+      }).then((res) => {
+        if (res.ok) {
+          // Replace the form with the confirmation code rather than just
+          // toasting it — this is the applicant's only way back in, so it
+          // needs to stay on screen long enough to actually copy down.
+          overlay.querySelector(".modal").innerHTML = `
+            <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+            <h3>${esc(L.t("apply_ok_title", lang))}</h3>
+            <p>${esc(L.t("apply_ok_body", lang))}</p>
+            <div class="confirm-code">${esc(res.code)}</div>
+            <p class="panel-hint">${esc(L.t("apply_ok_hint", lang))}</p>
+            <button type="button" class="btn btn-primary" id="apCopyCode">${esc(L.t("copy_code", lang))}</button>
+          `;
+          overlay.querySelector(".modal-close").addEventListener("click", close);
+          overlay.querySelector("#apCopyCode").addEventListener("click", (e2) => {
+            navigator.clipboard?.writeText(res.code).then(() => {
+              e2.target.textContent = L.t("copied", lang);
+            });
+          });
+        } else {
+          statusEl.className = "form-status err";
+          statusEl.textContent = L.t("reg_fail", lang);
+          submitBtn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function openStatusModal() {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(L.t("check_status", lang))}">
+        <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+        <h3>${esc(L.t("check_status", lang))}</h3>
+        <p class="panel-hint">${esc(L.t("check_status_hint", lang))}</p>
+        <form id="statusForm">
+          <label for="stCode">${esc(L.t("confirm_code", lang))}</label>
+          <input id="stCode" required autocomplete="off">
+          <button type="submit" class="btn btn-primary">${esc(L.t("check", lang))}</button>
+        </form>
+        <div id="statusResult"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector(".modal-close").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    setTimeout(() => overlay.querySelector("#stCode").focus(), 40);
+
+    overlay.querySelector("#statusForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const code = overlay.querySelector("#stCode").value.trim();
+      const resultEl = overlay.querySelector("#statusResult");
+      if (!code) return;
+      resultEl.innerHTML = `<p class="panel-hint">${esc(L.t("sending", lang))}</p>`;
+      L.getApplicationByCode(code).then((app) => {
+        if (!app) {
+          resultEl.innerHTML = `<p class="form-status err">${esc(L.t("code_not_found", lang))}</p>`;
+          return;
+        }
+        const statusLabels = {
+          pending: L.t("status_pending", lang),
+          accepted: L.t("status_accepted", lang),
+          declined: L.t("status_declined", lang)
+        };
+        const statusClass = { pending: "app-pending", accepted: "app-accepted", declined: "app-declined" }[app.status] || "app-pending";
+        resultEl.innerHTML = `
+          <div class="app-result ${statusClass}">
+            <span class="app-status-label">${esc(statusLabels[app.status] || app.status)}</span>
+            ${app.status === "accepted" ? `<p>${esc(L.t("check_email_notice", lang))}</p>` : ""}
+            ${app.note ? `<p class="app-note">${esc(app.note)}</p>` : ""}
+          </div>`;
+      });
+    });
+  }
+
+  const applyBtn = document.getElementById("openApplyBtn");
+  if (applyBtn) applyBtn.addEventListener("click", openApplyModal);
+  const statusBtn = document.getElementById("openStatusBtn");
+  if (statusBtn) statusBtn.addEventListener("click", openStatusModal);
+
   function renderDayPanel() {
     const title = document.getElementById("dayPanelTitle");
     const list = document.getElementById("dayPanelEvents");

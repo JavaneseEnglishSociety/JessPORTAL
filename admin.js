@@ -159,6 +159,7 @@
       partners: panelPartners,
       faq: panelFaq,
       news: panelNews,
+      applications: panelApplications,
       registrations: panelRegistrations,
       contact: panelContact,
       theme: panelTheme,
@@ -880,6 +881,144 @@
       const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", published: true, title_id: "", body_id: "" });
       saveData(); draw();
+    });
+  }
+
+  /* ---- Volunteer Applications panel ---- */
+  function panelApplications(root) {
+    root.innerHTML = `
+      <h2>Volunteer applications</h2>
+      <p class="panel-hint">People who applied to join JESS. Accept or decline, optionally leave a note, and use "Email applicant" to send them the real email — this site has no backend to send mail automatically, so that button just opens your email client with the message already written.</p>
+      <div class="admin-toolbar" id="appTabs">
+        <button type="button" class="tab-btn active" data-tab="pending">Pending</button>
+        <button type="button" class="tab-btn" data-tab="accepted">Accepted</button>
+        <button type="button" class="tab-btn" data-tab="declined">Declined</button>
+        <button type="button" class="tab-btn" data-tab="all">All</button>
+        <input type="search" id="appSearch" placeholder="Search by name or email…" style="margin-left:auto;">
+      </div>
+      <div id="appLoading" style="color:var(--color-text-gray);font-size:0.9rem;">Loading applications…</div>
+      <div class="admin-card-list" id="appList"></div>
+    `;
+    let all = [];
+    let tab = "pending";
+    let filter = "";
+
+    function when(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+        " at " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function emailTemplate(app) {
+      const subject = app.status === "accepted"
+        ? "Welcome to JESS!"
+        : app.status === "declined"
+        ? "Your JESS application"
+        : "Your JESS application";
+      const body = app.status === "accepted"
+        ? `Hi ${app.name},\n\nGreat news — you've been accepted to JESS! ${app.note ? app.note + "\n\n" : ""}We'll follow up here with next steps.\n\nWelcome aboard,\nJESS`
+        : app.status === "declined"
+        ? `Hi ${app.name},\n\nThank you for applying to JESS. ${app.note ? app.note + " " : ""}We're not able to bring you on this round, but we'd love to see you apply again in future.\n\nThank you,\nJESS`
+        : `Hi ${app.name},\n\nThanks for applying to JESS — we're reviewing your application and will be in touch soon.\n\nJESS`;
+      return `mailto:${encodeURIComponent(app.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    }
+
+    function draw() {
+      const q = filter.toLowerCase();
+      let rows = tab === "all" ? all : all.filter(a => (a.status || "pending") === tab);
+      rows = rows.filter(a => !q || (a.name || "").toLowerCase().includes(q) || (a.email || "").toLowerCase().includes(q));
+
+      const listEl = root.querySelector("#appList");
+      if (!rows.length) {
+        listEl.innerHTML = `<p class="panel-hint">Nothing here.</p>`;
+        return;
+      }
+      listEl.innerHTML = rows.map(a => `
+        <div class="admin-item-card" data-id="${a.id}">
+          <div class="admin-item-card-head">
+            <strong>${esc(a.name || "(no name)")}</strong>
+            <span class="tag app-tag-${a.status || "pending"}">${esc((a.status || "pending"))}</span>
+          </div>
+          <div class="tag-row">
+            <span class="tag">${a.role === "volunteer" ? "Volunteer teacher" : "Student"}</span>
+          </div>
+          <div style="font-size:0.9rem;margin-top:8px;">
+            ${esc(a.email || "")}${a.phone ? " · " + esc(a.phone) : ""}${a.school ? " · " + esc(a.school) : ""}
+          </div>
+          ${a.availability ? `<div style="font-size:0.9rem;margin-top:4px;"><strong>Availability:</strong> ${esc(a.availability)}</div>` : ""}
+          ${a.why ? `<div style="font-size:0.92rem;margin-top:8px;white-space:pre-wrap;">${esc(a.why)}</div>` : ""}
+          <div style="font-size:0.8rem;color:var(--color-text-gray);margin-top:8px;">Applied ${when(a.createdAt)}${a.reviewedAt ? " · Reviewed " + when(a.reviewedAt) : ""}</div>
+
+          <div class="field-group" style="margin-top:14px;">
+            <label>Note to applicant <span class="opt">shown to them + used in the email</span></label>
+            <textarea rows="2" data-note>${esc(a.note || "")}</textarea>
+          </div>
+
+          <div class="admin-item-actions">
+            <button data-status="accepted" class="${a.status === "accepted" ? "" : ""}">Accept</button>
+            <button data-status="declined">Decline</button>
+            <button data-status="pending">Reset to pending</button>
+            <a data-mailto href="${esc(emailTemplate(a))}">Email applicant</a>
+            <button class="danger" data-del>Delete</button>
+          </div>
+        </div>`).join("");
+
+      listEl.querySelectorAll(".admin-item-card").forEach(card => {
+        const id = card.dataset.id;
+        const app = all.find(x => String(x.id) === String(id));
+        if (!app) return;
+
+        card.querySelectorAll("[data-status]").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const note = card.querySelector("[data-note]").value.trim();
+            window.JESSData.updateApplicationStatus(id, btn.dataset.status, note).then((ok) => {
+              if (ok) {
+                app.status = btn.dataset.status;
+                app.note = note;
+                app.reviewedAt = Date.now();
+                toast(`Marked ${btn.dataset.status}.`);
+                draw();
+              } else {
+                toast("Couldn't update — check your connection.");
+              }
+            });
+          });
+        });
+        card.querySelector("[data-del]").addEventListener("click", () => {
+          if (!confirm("Delete this application? This can't be undone.")) return;
+          window.JESSData.deleteApplication(id).then(() => {
+            all = all.filter(x => x.id !== id);
+            toast("Deleted.");
+            draw();
+          });
+        });
+        // Keep the mailto link's note/subject in sync with unsaved edits
+        // to the note field, so "Email applicant" always sends what's on
+        // screen right now, not the last-saved version.
+        card.querySelector("[data-note]").addEventListener("input", (e) => {
+          const mailtoLink = card.querySelector("[data-mailto]");
+          const preview = { ...app, note: e.target.value };
+          mailtoLink.href = emailTemplate(preview);
+        });
+      });
+    }
+
+    root.querySelectorAll("#appTabs .tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        root.querySelectorAll("#appTabs .tab-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        tab = btn.dataset.tab;
+        draw();
+      });
+    });
+    root.querySelector("#appSearch").addEventListener("input", (e) => { filter = e.target.value; draw(); });
+
+    window.JESSData.listApplications().then((rows) => {
+      all = rows;
+      const loading = root.querySelector("#appLoading");
+      if (loading) loading.remove();
+      draw();
     });
   }
 
