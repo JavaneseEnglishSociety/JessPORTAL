@@ -941,7 +941,8 @@
             <span class="tag app-tag-${a.status || "pending"}">${esc((a.status || "pending"))}</span>
           </div>
           <div class="tag-row">
-            <span class="tag">${a.role === "volunteer" ? "Volunteer teacher" : "Student"}</span>
+            <span class="tag">${a.role === "volunteer" ? "Volunteer member" : "Student"}</span>
+            ${a.department ? `<span class="tag">${esc(a.department)}</span>` : ""}
           </div>
           <div style="font-size:0.9rem;margin-top:8px;">
             ${esc(a.email || "")}${a.phone ? " · " + esc(a.phone) : ""}${a.school ? " · " + esc(a.school) : ""}

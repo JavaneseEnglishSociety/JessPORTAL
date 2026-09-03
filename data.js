@@ -382,8 +382,11 @@ const UI_STRINGS = {
     form_send: "Send message",
     apply_to_volunteer: "Apply to volunteer", check_status: "Check application status",
     apply_intro: "Tell us a bit about yourself. We'll review it and let you know.",
-    school: "School", volunteer_teacher: "Volunteer as a teacher", student_join: "Join as a student",
+    school: "School", volunteer_teacher: "Volunteer as a member", student_join: "Join as a student",
     availability: "When are you available?", availability_ph: "e.g. weekday evenings, weekends",
+    department: "Department", department_ph: "Select a department",
+    dept_academics: "Academics", dept_media: "Media and Marketing",
+    dept_pr: "Public Relations", dept_internal: "Internal Management",
     apply_ok_title: "Application received", apply_ok_body: "Save this code — it's the only way to check your status later.",
     apply_ok_hint: "We'll review your application and update your status here. If you're accepted, check your email for next steps.",
     copy_code: "Copy code", copied: "Copied!",
@@ -430,8 +433,11 @@ const UI_STRINGS = {
     form_send: "Kirim pesan",
     apply_to_volunteer: "Daftar jadi relawan", check_status: "Cek status pendaftaran",
     apply_intro: "Ceritakan sedikit tentang dirimu. Kami akan meninjau dan menghubungi kembali.",
-    school: "Sekolah", volunteer_teacher: "Menjadi relawan pengajar", student_join: "Bergabung sebagai siswa",
+    school: "Sekolah", volunteer_teacher: "Menjadi anggota relawan", student_join: "Bergabung sebagai siswa",
     availability: "Kapan kamu tersedia?", availability_ph: "misalnya sore hari kerja, akhir pekan",
+    department: "Departemen", department_ph: "Pilih departemen",
+    dept_academics: "Akademik", dept_media: "Media dan Pemasaran",
+    dept_pr: "Hubungan Masyarakat", dept_internal: "Manajemen Internal",
     apply_ok_title: "Pendaftaran diterima", apply_ok_body: "Simpan kode ini — ini satu-satunya cara untuk mengecek status kamu nanti.",
     apply_ok_hint: "Kami akan meninjau pendaftaranmu dan memperbarui statusnya di sini. Jika diterima, periksa email untuk langkah selanjutnya.",
     copy_code: "Salin kode", copied: "Tersalin!",
@@ -575,15 +581,23 @@ function applicationsCollection() {
   return fsFns.collection(db, APPLICATIONS_COLLECTION);
 }
 
-async function submitApplication({ name, email, phone, school, role, availability, why }) {
+const DEPARTMENTS = ["Academics", "Media and Marketing", "Public Relations", "Internal Management"];
+
+async function submitApplication({ name, email, phone, school, role, department, availability, why }) {
   if (!firebaseReady) return { ok: false };
   try {
+    const isVolunteer = role === "volunteer";
     const ref = await fsFns.addDoc(applicationsCollection(), {
       name: String(name || "").slice(0, 120),
       email: String(email || "").slice(0, 160),
       phone: String(phone || "").slice(0, 40),
       school: String(school || "").slice(0, 160),
-      role: role === "volunteer" ? "volunteer" : "student",
+      role: isVolunteer ? "volunteer" : "student",
+      // Department only applies to members/volunteers — a student
+      // applicant has none, so it's stored empty rather than omitted,
+      // keeping every document the same shape for the rules and the
+      // admin panel to rely on.
+      department: (isVolunteer && DEPARTMENTS.includes(department)) ? department : "",
       availability: String(availability || "").slice(0, 300),
       why: String(why || "").slice(0, 1200),
       status: "pending",
@@ -864,7 +878,7 @@ window.JESSData = {
   login, logout, onAuthChange,
   submitMessage, listMessages, deleteMessage,
   submitRegistration, listRegistrations, deleteRegistration,
-  submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication,
+  submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication, DEPARTMENTS,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
   firebaseReady: () => firebaseReady

@@ -575,6 +575,16 @@
             <option value="volunteer">${esc(L.t("volunteer_teacher", lang))}</option>
             <option value="student">${esc(L.t("student_join", lang))}</option>
           </select>
+          <div id="apDeptWrap">
+            <label for="apDept">${esc(L.t("department", lang))}</label>
+            <select id="apDept">
+              <option value="" disabled selected>${esc(L.t("department_ph", lang))}</option>
+              <option value="Academics">${esc(L.t("dept_academics", lang))}</option>
+              <option value="Media and Marketing">${esc(L.t("dept_media", lang))}</option>
+              <option value="Public Relations">${esc(L.t("dept_pr", lang))}</option>
+              <option value="Internal Management">${esc(L.t("dept_internal", lang))}</option>
+            </select>
+          </div>
           <label for="apAvail">${esc(L.t("availability", lang))}</label>
           <input id="apAvail" placeholder="${esc(L.t("availability_ph", lang))}">
           <label for="apWhy">${esc(L.t("why_join", lang))}</label>
@@ -589,13 +599,23 @@
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
     setTimeout(() => overlay.querySelector("#apName").focus(), 40);
 
+    // Department only makes sense for a volunteer/member application, not
+    // a student sign-up, so it's shown or hidden as that choice changes.
+    const roleSel = overlay.querySelector("#apRole");
+    const deptWrap = overlay.querySelector("#apDeptWrap");
+    const syncDeptVisibility = () => { deptWrap.hidden = roleSel.value !== "volunteer"; };
+    syncDeptVisibility();
+    roleSel.addEventListener("change", syncDeptVisibility);
+
     overlay.querySelector("#applyForm").addEventListener("submit", (ev) => {
       ev.preventDefault();
       const statusEl = overlay.querySelector("#apStatus");
       const submitBtn = overlay.querySelector("button[type=submit]");
       const name = overlay.querySelector("#apName").value.trim();
       const email = overlay.querySelector("#apEmail").value.trim();
-      if (!name || !email) {
+      const roleVal = overlay.querySelector("#apRole").value;
+      const deptVal = overlay.querySelector("#apDept").value;
+      if (!name || !email || (roleVal === "volunteer" && !deptVal)) {
         statusEl.className = "form-status err";
         statusEl.textContent = L.t("required_fields", lang);
         return;
@@ -609,6 +629,7 @@
         phone: overlay.querySelector("#apPhone").value.trim(),
         school: overlay.querySelector("#apSchool").value.trim(),
         role: overlay.querySelector("#apRole").value,
+        department: overlay.querySelector("#apDept").value,
         availability: overlay.querySelector("#apAvail").value.trim(),
         why: overlay.querySelector("#apWhy").value.trim()
       }).then((res) => {

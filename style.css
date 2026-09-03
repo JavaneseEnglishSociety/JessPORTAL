@@ -1190,3 +1190,5 @@ img.team-photo { object-fit: cover; }
 @media (max-width: 720px) {
   #appTabs input[type="search"] { margin-left: 0 !important; width: 100%; }
 }
+
+#apDeptWrap[hidden] { display: none; }
