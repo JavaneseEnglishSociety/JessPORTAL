@@ -20,6 +20,26 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // Event registrations / volunteer sign-ups from the public site.
+    // Same shape as /messages: anyone may CREATE one (that is the point of
+    // a public sign-up form) but only the admin can read or delete them,
+    // and nobody can edit one after the fact. Kept in its own collection
+    // so sign-ups can never fill up the 1MB jess/site document.
+    match /registrations/{registrationId} {
+      allow create: if request.resource.data.keys().hasOnly(
+                         ['eventId', 'eventTitle', 'name', 'email', 'phone',
+                          'role', 'why', 'createdAt'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() > 0
+                    && request.resource.data.name.size() <= 120
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() <= 160
+                    && request.resource.data.why.size() <= 1200
+                    && request.resource.data.role in ['participant', 'volunteer'];
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
     // ============================================================
     // JESSEDU — accounts
     // ============================================================

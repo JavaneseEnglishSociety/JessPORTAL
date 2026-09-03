@@ -12,6 +12,14 @@
 
   let DATA = window.JESSData.defaultData();
 
+  // Language state. `L` is just a shorthand for the helpers in data.js;
+  // `field(obj,name)` returns the Indonesian variant when one exists and
+  // falls back to the English text when it doesn't, so an untranslated
+  // site still reads correctly in either mode.
+  const L = window.JESSData;
+  let lang = L.getLang();
+  const field = (obj, name) => L.field(obj, name, lang);
+
   /* ------------------------------------------------------------------ *
    * THEME APPLICATION
    * ------------------------------------------------------------------ */
@@ -46,15 +54,18 @@
   }
 
   function renderHero() {
-    document.getElementById("heroTitle").textContent = DATA.hero.title;
-    document.getElementById("heroSubtitle").textContent = DATA.hero.subtitle;
-    document.getElementById("heroBtnPrimary").textContent = DATA.hero.primaryBtn;
-    document.getElementById("heroBtnSecondary").textContent = DATA.hero.secondaryBtn;
+    document.getElementById("heroTitle").textContent = field(DATA.hero, "title");
+    document.getElementById("heroSubtitle").textContent = field(DATA.hero, "subtitle");
+    document.getElementById("heroBtnPrimary").textContent = field(DATA.hero, "primaryBtn");
+    document.getElementById("heroBtnSecondary").textContent = field(DATA.hero, "secondaryBtn");
   }
 
   function renderMission() {
-    document.getElementById("visionText").textContent = DATA.mission.vision;
-    document.getElementById("missionList").innerHTML = DATA.mission.missionList
+    document.getElementById("visionText").textContent = field(DATA.mission, "vision");
+    const mList = (lang === "id" && DATA.mission.missionList_id && DATA.mission.missionList_id.length)
+      ? DATA.mission.missionList_id
+      : DATA.mission.missionList;
+    document.getElementById("missionList").innerHTML = mList
       .map((m) => `<li>${esc(m)}</li>`).join("");
   }
 
@@ -70,8 +81,8 @@
     document.getElementById("programsGrid").innerHTML = DATA.programs.map(p => `
       <div class="program-card fade-in-up visible">
         <div class="program-icon">${p.icon || "📘"}</div>
-        <h3>${esc(p.title)}</h3>
-        <p>${esc(p.desc)}</p>
+        <h3>${esc(field(p, "title"))}</h3>
+        <p>${esc(field(p, "desc"))}</p>
       </div>`).join("");
   }
 
@@ -114,11 +125,67 @@
     );
   }
 
+  /* ---- News --------------------------------------------------------- *
+   * Short updates, newest first. Unpublished posts are hidden from the
+   * public site but stay editable in the admin panel, so a post can be
+   * drafted before it goes live.
+   * ------------------------------------------------------------------- */
+  function renderNews() {
+    const grid = document.getElementById("newsGrid");
+    if (!grid) return;
+    const posts = (DATA.news || [])
+      .filter(n => n.published !== false)
+      .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+    if (!posts.length) {
+      grid.innerHTML = `<p class="empty-note">${esc(L.t("no_news", lang))}</p>`;
+      return;
+    }
+    grid.innerHTML = posts.map(n => {
+      const body = field(n, "body");
+      const short = body.length > 180 ? body.slice(0, 180).trim() + "…" : body;
+      const dateLabel = n.date
+        ? new Date(n.date + "T00:00:00").toLocaleDateString(lang === "id" ? "id-ID" : undefined,
+            { year: "numeric", month: "long", day: "numeric" })
+        : "";
+      return `
+      <article class="news-card fade-in-up visible">
+        ${dateLabel ? `<div class="news-date">${esc(dateLabel)}</div>` : ""}
+        <h3>${esc(field(n, "title"))}</h3>
+        <p class="news-body">${esc(short)}</p>
+        ${body.length > 180
+          ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(L.t("read_more", lang))}</button>`
+          : ""}
+      </article>`;
+    }).join("");
+  }
+
+  // Expand a news post into a modal rather than truncating it forever.
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-news]");
+    if (!btn) return;
+    const n = (DATA.news || []).find(x => String(x.id) === String(btn.dataset.news));
+    if (!n) return;
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+        <h3>${esc(field(n, "title"))}</h3>
+        ${n.date ? `<p class="news-date">${esc(n.date)}</p>` : ""}
+        <p style="white-space:pre-wrap;">${esc(field(n, "body"))}</p>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector(".modal-close").addEventListener("click", close);
+    overlay.addEventListener("click", (e2) => { if (e2.target === overlay) close(); });
+  });
+
   function renderFaq() {
     document.getElementById("faqAccordion").innerHTML = DATA.faq.map((f, i) => `
       <div class="accordion-item" data-index="${i}">
-        <button class="accordion-q">${esc(f.q)} </button>
-        <div class="accordion-a"><p>${esc(f.a)}</p></div>
+        <button class="accordion-q">${esc(field(f, "q"))} <span class="chev">&#9662;</span></button>
+        <div class="accordion-a"><p>${esc(field(f, "a"))}</p></div>
       </div>`).join("");
 
     document.querySelectorAll("#faqAccordion .accordion-q").forEach(btn => {
@@ -139,7 +206,7 @@
   }
 
   function renderContact() {
-    document.getElementById("contactIntro").textContent = DATA.contact.intro;
+    document.getElementById("contactIntro").textContent = field(DATA.contact, "intro");
     document.getElementById("contactEmail").textContent = DATA.contact.email;
     document.getElementById("contactLocation").textContent = DATA.contact.location;
     document.getElementById("socialInstagram").href = DATA.contact.instagram;
@@ -159,11 +226,46 @@
     renderPartners();
     renderGallery();
     renderFaq();
+    renderNews();
     renderContact();
     renderCalendar();
     renderUpcoming();
     renderTestimonials();
     applyTheme();
+    applyStaticStrings();
+  }
+
+  /* ---- Language toggle ---------------------------------------------- *
+   * Static labels in the HTML carry data-i18n="key" (and data-i18n-ph for
+   * placeholders). Switching language rewrites those, then re-renders the
+   * data-driven sections. The choice is stored so it survives a reload.
+   * ------------------------------------------------------------------- */
+  function applyStaticStrings() {
+    document.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = L.t(el.dataset.i18n, lang);
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+      el.setAttribute("placeholder", L.t(el.dataset.i18nPh, lang));
+    });
+    document.documentElement.setAttribute("lang", lang === "id" ? "id" : "en");
+    const btn = document.getElementById("langToggle");
+    if (btn) {
+      // The button shows the language you'd switch TO, which is the
+      // clearer convention for a two-language switch.
+      btn.textContent = lang === "id" ? "EN" : "ID";
+      btn.setAttribute("aria-label",
+        lang === "id" ? "Switch to English" : "Ganti ke Bahasa Indonesia");
+    }
+  }
+
+  const langBtn = document.getElementById("langToggle");
+  if (langBtn) {
+    langBtn.addEventListener("click", () => {
+      lang = (lang === "id") ? "en" : "id";
+      L.setLang(lang);
+      applyStaticStrings();
+      renderAll();
+    });
   }
 
   /* ------------------------------------------------------------------ *
@@ -291,9 +393,24 @@
       const evs = eventsForDate(key);
       const isToday = key === todayKey;
       const isSelected = key === selectedDate;
-      const dots = evs.slice(0, 4).map(e => `<span class="cal-dot" style="background:${e.color}"></span>`).join("");
-      html += `<button type="button" class="cal-day ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}" data-key="${key}" role="gridcell" aria-label="${key}${evs.length ? ', ' + evs.length + ' events' : ''}">
-        ${d}<div class="cal-dots">${dots}</div>
+      // A day with events is filled with that event's own colour so it reads
+      // as a solid block at a glance, not a dot you have to hunt for. With
+      // several events the cell is split into colour bands, one per event.
+      let blockStyle = "";
+      let countBadge = "";
+      if (evs.length === 1) {
+        blockStyle = ` style="--day-bg:${evs[0].color}"`;
+      } else if (evs.length > 1) {
+        const slice = evs.slice(0, 3);
+        const step = 100 / slice.length;
+        const bands = slice.map((e, i) =>
+          `${e.color} ${(i * step).toFixed(2)}%, ${e.color} ${((i + 1) * step).toFixed(2)}%`
+        ).join(", ");
+        blockStyle = ` style="--day-bg:linear-gradient(135deg, ${bands})"`;
+        countBadge = `<span class="cal-count">${evs.length}</span>`;
+      }
+      html += `<button type="button" class="cal-day ${evs.length ? "filled" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}"${blockStyle} data-key="${key}" role="gridcell" aria-label="${key}${evs.length ? ', ' + evs.length + ' events' : ''}">
+        <span class="cal-num">${d}</span>${countBadge}
       </button>`;
     }
     grid.innerHTML = html;
@@ -312,10 +429,126 @@
     renderDayPanel();
   }
 
+  /* ---- Event markers + registration ---------------------------------- *
+   * Tags come from a fixed vocabulary in data.js, so they render with
+   * consistent wording and colour instead of free text. The two that
+   * change what a visitor can DO — volunteering and online/offline — get
+   * their own colour; the rest share a neutral style.
+   * -------------------------------------------------------------------- */
+  function renderTags(e) {
+    if (!e.tags || !e.tags.length) return "";
+    return `<div class="tag-row">${e.tags.map(tag => {
+      const mod = tag === "Available to volunteer" ? " tag-volunteer"
+                : tag === "Online" ? " tag-online"
+                : tag === "Offline" ? " tag-offline"
+                : "";
+      return `<span class="tag${mod}">${esc(L.tagLabel(tag, lang))}</span>`;
+    }).join("")}</div>`;
+  }
+
+  function renderRegisterBtn(e) {
+    const r = e.registration || {};
+    if (!r.enabled) return "";
+    if (r.closed) {
+      return `<span class="reg-closed">${esc(L.t("registration_closed", lang))}</span>`;
+    }
+    if (r.mode === "link" && r.url) {
+      return `<a class="btn btn-primary btn-sm reg-btn" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(L.t("register", lang))}</a>`;
+    }
+    return `<button type="button" class="btn btn-primary btn-sm reg-btn" data-register="${esc(e.id)}">${esc(L.t("register", lang))}</button>`;
+  }
+
+  // One delegated listener handles every Register button on the page,
+  // including ones re-rendered later by the calendar or the language switch.
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-register]");
+    if (btn) openRegistrationModal(btn.dataset.register);
+  });
+
+  function openRegistrationModal(eventId) {
+    const e = DATA.events.find(x => String(x.id) === String(eventId));
+    if (!e) return;
+    const r = e.registration || {};
+    const canVolunteer = (e.tags || []).includes("Available to volunteer");
+
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(L.t("register_for", lang))} ${esc(field(e, "title"))}">
+        <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+        <h3>${esc(L.t("register_for", lang))} ${esc(field(e, "title"))}</h3>
+        <p class="panel-hint">${esc(e.date)}${e.time ? " · " + esc(e.time) : ""}${e.location ? " · " + esc(e.location) : ""}</p>
+        <form id="regForm">
+          <label for="regName">${esc(L.t("full_name", lang))}</label>
+          <input id="regName" required autocomplete="name">
+          <label for="regEmail">${esc(L.t("email", lang))}</label>
+          <input id="regEmail" type="email" required autocomplete="email">
+          <label for="regPhone">${esc(L.t("phone", lang))}</label>
+          <input id="regPhone" autocomplete="tel">
+          ${canVolunteer ? `
+          <label for="regRole">${esc(L.t("role", lang))}</label>
+          <select id="regRole">
+            <option value="participant">${esc(L.t("participant", lang))}</option>
+            <option value="volunteer">${esc(L.t("volunteer", lang))}</option>
+          </select>` : ""}
+          ${r.askWhy ? `
+          <label for="regWhy">${esc(L.t("why_join", lang))}</label>
+          <textarea id="regWhy" rows="3"></textarea>` : ""}
+          <button type="submit" class="btn btn-primary">${esc(L.t("send", lang))}</button>
+          <p class="form-status" id="regStatus" role="status"></p>
+        </form>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector(".modal-close").addEventListener("click", close);
+    overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
+    document.addEventListener("keydown", function esc2(ev) {
+      if (ev.key === "Escape") { close(); document.removeEventListener("keydown", esc2); }
+    });
+    setTimeout(() => overlay.querySelector("#regName").focus(), 40);
+
+    overlay.querySelector("#regForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const statusEl = overlay.querySelector("#regStatus");
+      const submitBtn = overlay.querySelector("button[type=submit]");
+      const name = overlay.querySelector("#regName").value.trim();
+      const email = overlay.querySelector("#regEmail").value.trim();
+      if (!name || !email) {
+        statusEl.textContent = L.t("required_fields", lang);
+        statusEl.className = "form-status err";
+        return;
+      }
+      submitBtn.disabled = true;
+      statusEl.className = "form-status";
+      statusEl.textContent = L.t("sending", lang);
+
+      window.JESSData.submitRegistration({
+        eventId: e.id,
+        eventTitle: e.title,
+        name, email,
+        phone: overlay.querySelector("#regPhone").value.trim(),
+        role: overlay.querySelector("#regRole") ? overlay.querySelector("#regRole").value : "participant",
+        why: overlay.querySelector("#regWhy") ? overlay.querySelector("#regWhy").value.trim() : ""
+      }).then((ok) => {
+        if (ok) {
+          statusEl.className = "form-status ok";
+          statusEl.textContent = L.t("reg_ok", lang);
+          overlay.querySelector("#regForm").reset();
+          setTimeout(close, 2200);
+        } else {
+          statusEl.className = "form-status err";
+          statusEl.textContent = L.t("reg_fail", lang);
+          submitBtn.disabled = false;
+        }
+      });
+    });
+  }
+
   function renderDayPanel() {
     const title = document.getElementById("dayPanelTitle");
     const list = document.getElementById("dayPanelEvents");
-    if (!selectedDate) { title.textContent = "Select a day"; list.innerHTML = ""; return; }
+    if (!selectedDate) { title.textContent = L.t("select_date", lang); list.innerHTML = ""; return; }
 
     const d = new Date(selectedDate + "T00:00:00");
     title.textContent = d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -326,9 +559,11 @@
         <div class="day-event" style="border-color:${e.color}">
           <strong>${esc(e.title)}</strong>
           ${e.time ? esc(e.time) + " · " : ""}${esc(e.location || "")}
+          ${renderTags(e)}
           <div>${esc(e.desc || "")}</div>
+          ${renderRegisterBtn(e)}
         </div>`).join("")
-      : `<p class="day-empty-msg">No events on this day.</p>`;
+      : `<p class="day-empty-msg">${esc(L.t("no_events_day", lang))}</p>`;
   }
 
   document.getElementById("prevMonth").addEventListener("click", () => {
@@ -350,12 +585,13 @@
 
     document.getElementById("upcomingGrid").innerHTML = upcoming.map(e => `
       <div class="upcoming-card fade-in-up visible" style="border-top-color:${e.color}" data-countdown="${e.date}T${e.time || '00:00'}">
-        <div class="u-date">${new Date(e.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</div>
-        <h4>${esc(e.title)}</h4>
+        <div class="u-date">${new Date(e.date + "T00:00:00").toLocaleDateString(lang === "id" ? "id-ID" : undefined, { month: "short", day: "numeric", year: "numeric" })}</div>
+        <h4>${esc(field(e, "title"))}</h4>
         <p style="margin:0 0 6px;font-size:0.85rem;">${esc(e.location || "")}</p>
+        ${renderTags(e)}
         <div class="countdown"></div>
-        <a href="#contact" class="btn btn-secondary btn-sm">Register</a>
-      </div>`).join("") || `<p>No upcoming events yet.</p>`;
+        ${renderRegisterBtn(e) || `<a href="#contact" class="btn btn-secondary btn-sm">${esc(L.t("register", lang))}</a>`}
+      </div>`).join("") || `<p class="empty-note">${esc(L.t("no_upcoming", lang))}</p>`;
 
     updateCountdowns();
   }
@@ -365,14 +601,14 @@
       const target = new Date(card.dataset.countdown);
       const cdEl = card.querySelector(".countdown");
       const diff = target - new Date();
-      if (diff <= 0) { cdEl.innerHTML = `<div><div class="cd-num">Live</div></div>`; return; }
+      if (diff <= 0) { cdEl.innerHTML = `<div><div class="cd-num">${L.t("live", lang)}</div></div>`; return; }
       const days = Math.floor(diff / 86400000);
       const hours = Math.floor((diff % 86400000) / 3600000);
       const mins = Math.floor((diff % 3600000) / 60000);
       cdEl.innerHTML = `
-        <div><div class="cd-num">${days}</div><div class="cd-label">Days</div></div>
-        <div><div class="cd-num">${hours}</div><div class="cd-label">Hrs</div></div>
-        <div><div class="cd-num">${mins}</div><div class="cd-label">Min</div></div>`;
+        <div><div class="cd-num">${days}</div><div class="cd-label">${L.t("days", lang)}</div></div>
+        <div><div class="cd-num">${hours}</div><div class="cd-label">${L.t("hrs", lang)}</div></div>
+        <div><div class="cd-num">${mins}</div><div class="cd-label">${L.t("min", lang)}</div></div>`;
     });
   }
   setInterval(updateCountdowns, 60000);

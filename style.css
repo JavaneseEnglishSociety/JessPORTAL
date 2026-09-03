@@ -975,3 +975,146 @@ img.team-photo { object-fit: cover; }
 
 /* Day panel empty state */
 .day-empty-msg { color: var(--color-text-gray); font-size: 0.95rem; }
+
+/* ==========================================================================
+   ADDITIONS — calendar blocks, event markers, news, language toggle
+   ========================================================================== */
+
+/* ---- Calendar: days with events read as solid blocks ---- */
+.cal-day { position: relative; overflow: hidden; }
+.cal-num { position: relative; z-index: 2; }
+.cal-day.filled {
+  background: var(--day-bg);
+  border-color: var(--color-ink);
+  color: #fff;
+  font-weight: 700;
+  /* Keeps the number legible on pale event colours as well as dark ones. */
+  text-shadow: 0 1px 2px rgba(20, 20, 15, 0.45);
+}
+.cal-day.filled:hover { filter: brightness(0.94); }
+.cal-day.filled.today { box-shadow: inset 0 0 0 2.5px var(--color-ink); }
+.cal-day.selected, .cal-day.filled.selected {
+  box-shadow: var(--edge-sm), inset 0 0 0 2.5px var(--color-ink);
+}
+.cal-count {
+  position: absolute; top: 3px; right: 4px; z-index: 2;
+  min-width: 15px; height: 15px; padding: 0 3px;
+  display: grid; place-items: center;
+  font-size: 0.62rem; font-weight: 700; line-height: 1;
+  color: var(--color-ink); background: var(--color-bg);
+  border: 1.5px solid var(--color-ink); border-radius: 999px;
+  text-shadow: none;
+}
+/* The old dot markers are superseded by the filled block. */
+.cal-dots, .cal-dot { display: none; }
+
+/* ---- Event markers (tags) ---- */
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.tag {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 0.76rem; font-weight: 600; line-height: 1.5;
+  border: 1.5px solid var(--color-ink); border-radius: 999px;
+  background: var(--color-bg); color: var(--color-text);
+  white-space: nowrap;
+}
+.tag-online { background: #E4F1FB; }
+.tag-offline { background: var(--color-page-soft); }
+.tag-volunteer { background: var(--color-primary-dark); color: #fff; }
+.tag-reg { background: var(--color-page); }
+
+/* ---- Registration ---- */
+.reg-btn { margin-top: 12px; }
+.reg-closed {
+  display: inline-block; margin-top: 12px;
+  font-size: 0.85rem; font-weight: 600; color: var(--color-text-gray);
+}
+.modal .panel-hint { margin-top: -6px; margin-bottom: 16px; }
+.modal textarea {
+  width: 100%; padding: 11px 13px; resize: vertical;
+  border: 1.5px solid var(--color-border-soft); border-radius: var(--radius-sm);
+  background: var(--color-bg); color: var(--color-text); outline: none;
+  font-family: inherit;
+}
+.modal textarea:focus { border-color: var(--color-primary); }
+
+/* ---- News ---- */
+.news-grid {
+  display: grid; gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.news-card {
+  padding: 28px 26px;
+  background: var(--color-bg);
+  border: var(--rule); border-radius: var(--radius-md);
+  box-shadow: var(--edge-sm);
+  display: flex; flex-direction: column;
+}
+.news-date {
+  font-size: 0.82rem; font-weight: 700;
+  color: var(--color-primary-dark); margin-bottom: 8px;
+}
+.news-card h3 { font-size: 1.3rem; margin-bottom: 10px; }
+.news-body {
+  color: var(--color-text-gray); font-size: 0.97rem; flex: 1;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.news-card h3 { overflow-wrap: anywhere; }
+.modal p { overflow-wrap: anywhere; }
+.news-more {
+  align-self: flex-start; margin-top: 16px; cursor: pointer;
+  padding: 0; background: none; border: none;
+  border-bottom: 1.5px solid var(--color-primary);
+  font-weight: 600; font-size: 0.92rem; color: var(--color-primary-dark);
+}
+.news-more:hover { border-bottom-color: var(--color-ink); color: var(--color-text); }
+
+/* ---- Language toggle ---- */
+.lang-btn {
+  min-width: 40px; height: 40px; padding: 0 10px; cursor: pointer;
+  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.03em;
+  background: var(--color-bg); color: var(--color-text);
+  border: 1.5px solid var(--color-ink); border-radius: var(--radius-sm);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.lang-btn:hover { background: var(--color-primary); color: #fff; }
+
+/* ---- Admin: tag picker + switches ---- */
+.tag-picker {
+  display: grid; gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 6px;
+}
+.tag-check {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 11px; cursor: pointer;
+  border: 1.5px solid var(--color-border-soft); border-radius: var(--radius-sm);
+  font-size: 0.9rem; font-weight: 500;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.tag-check:hover { border-color: var(--color-ink); background: var(--color-page-soft); }
+.tag-check input { width: auto; margin: 0; }
+.tag-check:has(input:checked) {
+  border-color: var(--color-ink); background: var(--color-page);
+}
+.switch-row {
+  display: flex; align-items: center; gap: 10px;
+  margin: 14px 0 4px; cursor: pointer;
+  font-size: 0.93rem; font-weight: 500;
+}
+.switch-row input { width: auto; margin: 0; }
+.opt {
+  font-weight: 500; font-size: 0.82rem;
+  color: var(--color-text-gray);
+}
+#regOptions {
+  margin: 6px 0 4px; padding: 14px 16px;
+  border: 1.5px dashed var(--color-border-soft); border-radius: var(--radius-sm);
+  background: var(--color-bg-tint);
+}
+#regOptions[hidden], #regUrlWrap[hidden] { display: none; }
+
+@media (max-width: 720px) {
+  .lang-btn { min-width: 36px; height: 36px; font-size: 0.78rem; }
+  .news-grid { grid-template-columns: 1fr; }
+}

@@ -49,6 +49,41 @@ keep the shared Firebase project (the rules cover every JESS site's collections
 at once), or paste it into Firebase Console → Firestore Database → Rules →
 Publish.
 
+## What's new in this version
+
+- **Calendar days are filled blocks.** A day with an event is painted in that
+  event's colour instead of carrying a small dot. Several events on one day
+  split the cell into colour bands and add a count badge.
+- **Event markers.** Pick from a fixed list — Online, Offline, Hybrid, Open to
+  public, Available to volunteer, Registration required, Members only — in the
+  Events editor. Fixed wording keeps them consistent and translatable.
+- **Sign-ups.** Any event can accept registrations, either through a form on
+  this site or a link to an external one. "Available to volunteer" adds a
+  participant/volunteer choice to the form. Sign-ups appear in the new
+  **Sign-ups** admin panel with CSV export.
+- **News.** A new admin panel and homepage section for short updates. Posts can
+  be drafted with Published unticked.
+- **English / Bahasa Indonesia toggle.** The `ID` / `EN` button in the navbar.
+  Interface labels are translated already; your own content has optional
+  "(ID)" fields throughout the admin. **Anything left blank falls back to the
+  English text**, so the toggle works immediately and you can translate
+  gradually.
+
+### Deploy the rules again
+
+Sign-ups need a new `registrations` collection rule. Until you publish the
+updated `firestore.rules`, the sign-up form will fail with a permission error.
+Firebase Console → Firestore Database → Rules → paste → Publish.
+
+## Your existing content is safe
+
+This upgrade is additive. `data.js` now runs a `normalizeData()` pass that
+fills in only the fields an older document is missing — new event markers, the
+registration block, the `news` array, the Indonesian fields — and never
+overwrites a value that is already there. Team members, programs, partners,
+FAQs, photos, stats and testimonials all carry over untouched. This was tested
+against a document saved in the old format before release.
+
 ## Notes on how it works
 
 - Firestore is the source of truth. `localStorage` is only an instant-paint

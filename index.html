@@ -26,16 +26,18 @@
     </a>
 
     <nav class="nav-links" id="navLinks" aria-label="Primary">
-      <a href="#about">About</a>
-      <a href="#programs">Programs</a>
-      <a href="#events">Events</a>
-      <a href="#team">Team</a>
-      <a href="#volunteer">Volunteer</a>
-      <a href="#partners">Partners</a>
-      <a href="#contact">Contact</a>
+      <a href="#about" data-i18n="nav_about">About</a>
+      <a href="#programs" data-i18n="nav_programs">Programs</a>
+      <a href="#events" data-i18n="nav_events">Events</a>
+      <a href="#team" data-i18n="nav_team">Team</a>
+      <a href="#volunteer" data-i18n="nav_volunteer">Volunteer</a>
+      <a href="#partners" data-i18n="nav_partners">Partners</a>
+      <a href="#news" data-i18n="nav_news">News</a>
+      <a href="#contact" data-i18n="nav_contact">Contact</a>
     </nav>
 
     <div class="nav-right">
+      <button class="lang-btn" id="langToggle" type="button" aria-label="Ganti ke Bahasa Indonesia">ID</button>
       <button class="icon-btn" id="searchToggle" aria-label="Search the site" aria-expanded="false">
         <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M10 3a7 7 0 105.29 12.29l4.7 4.7 1.41-1.41-4.7-4.7A7 7 0 0010 3zm0 2a5 5 0 110 10 5 5 0 010-10z"/></svg>
       </button>
@@ -50,7 +52,7 @@
 <div class="search-overlay" id="searchOverlay" hidden>
   <div class="search-box">
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M10 3a7 7 0 105.29 12.29l4.7 4.7 1.41-1.41-4.7-4.7A7 7 0 0010 3zm0 2a5 5 0 110 10 5 5 0 010-10z"/></svg>
-    <input type="text" id="searchInput" placeholder="Search programs, team, events…" aria-label="Search the site">
+    <input type="text" id="searchInput" placeholder="Search programs, team, events…" data-i18n-ph="search_placeholder" aria-label="Search the site">
     <button id="searchClose" aria-label="Close search">&times;</button>
   </div>
   <div class="search-results" id="searchResults"></div>
@@ -80,8 +82,8 @@
   <section class="section" id="about">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">About JESS</span>
-        <h2>Peer teaching, at the scale of a movement.</h2>
+        <span class="marker" data-i18n="marker_about">About JESS</span>
+        <h2 data-i18n="h_about">Peer teaching, at the scale of a movement.</h2>
         <p class="lede">JESS is a youth-led nonprofit providing free English education for students across Java. We train qualified middle and high school students to teach English themselves — building confidence, literacy, and community with every class.</p>
       </div>
 
@@ -115,13 +117,13 @@
     <div class="section-inner">
       <div class="vision-wrap">
         <div class="vision-card fade-in-up">
-          <span class="marker">Our vision</span>
-          <h2>Where we're going</h2>
+          <span class="marker" data-i18n="marker_vision">Our vision</span>
+          <h2 data-i18n="h_vision">Where we're going</h2>
           <p id="visionText">To build a generation of confident English speakers through accessible education and youth collaboration.</p>
         </div>
         <div class="fade-in-up">
-          <span class="marker">Our mission</span>
-          <h2>How we get there</h2>
+          <span class="marker" data-i18n="marker_mission">Our mission</span>
+          <h2 data-i18n="h_mission">How we get there</h2>
           <ul class="mission-list" id="missionList"></ul>
         </div>
       </div>
@@ -134,8 +136,8 @@
   <section class="section" id="programs">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Programs</span>
-        <h2>What we run.</h2>
+        <span class="marker" data-i18n="marker_programs">Programs</span>
+        <h2 data-i18n="h_programs">What we run.</h2>
         <p class="lede">Five programs, all free, all taught by trained student volunteers.</p>
       </div>
       <div class="programs-grid" id="programsGrid"></div>
@@ -146,8 +148,8 @@
   <section class="section section-tint" id="events">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Calendar</span>
-        <h2>What's coming up.</h2>
+        <span class="marker" data-i18n="marker_calendar">Calendar</span>
+        <h2 data-i18n="h_events">What's coming up.</h2>
         <p class="lede">Pick a date to see what's happening. Everything is free and open to join.</p>
       </div>
 
@@ -176,7 +178,7 @@
         </div>
 
         <aside class="day-panel fade-in-up">
-          <h3 id="dayPanelTitle">Select a date</h3>
+          <h3 id="dayPanelTitle" data-i18n="select_date">Select a date</h3>
           <div id="dayPanelEvents"><p class="empty-note">Choose a day on the calendar to see its events.</p></div>
         </aside>
       </div>
@@ -189,8 +191,8 @@
   <section class="section" id="team">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">The team</span>
-        <h2>Who runs JESS.</h2>
+        <span class="marker" data-i18n="marker_team">The team</span>
+        <h2 data-i18n="h_team">Who runs JESS.</h2>
         <p class="lede">Students and recent graduates who build the curriculum, teach the classes, and keep the organisation running.</p>
       </div>
       <div class="team-grid" id="teamGrid"></div>
@@ -202,8 +204,8 @@
     <div class="section-inner">
       <div class="volunteer-wrap">
         <div class="fade-in-up">
-          <span class="marker">Volunteer</span>
-          <h2>Teach the class you wish you'd had.</h2>
+          <span class="marker" data-i18n="marker_volunteer">Volunteer</span>
+          <h2 data-i18n="h_volunteer">Teach the class you wish you'd had.</h2>
           <p class="lede">If you're a middle or high school student who's confident in English, you can train with us and lead your own class. No teaching experience needed — we'll get you there.</p>
           <div class="hero-actions" style="margin-top:30px;">
             <a href="#contact" class="btn btn-primary">Apply to volunteer</a>
@@ -223,10 +225,21 @@
   <section class="section" id="partners">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Partners</span>
-        <h2>Schools and organisations we work with.</h2>
+        <span class="marker" data-i18n="marker_partners">Partners</span>
+        <h2 data-i18n="h_partners">Schools and organisations we work with.</h2>
       </div>
       <div class="partners-grid" id="partnersGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============ NEWS ============ -->
+  <section class="section" id="news">
+    <div class="section-inner">
+      <div class="section-head fade-in-up">
+        <span class="marker" data-i18n="marker_news">News</span>
+        <h2 data-i18n="h_news">Latest from JESS.</h2>
+      </div>
+      <div class="news-grid" id="newsGrid"></div>
     </div>
   </section>
 
@@ -234,8 +247,8 @@
   <section class="section section-tint">
     <div class="section-inner">
       <div class="section-head fade-in-up" style="text-align:center;margin-left:auto;margin-right:auto;">
-        <span class="marker">In their words</span>
-        <h2>What students say.</h2>
+        <span class="marker" data-i18n="marker_testimonials">In their words</span>
+        <h2 data-i18n="h_testimonials">What students say.</h2>
       </div>
       <div class="testi-wrap fade-in-up">
         <div class="testi-viewport" id="testimonialViewport"></div>
@@ -252,8 +265,8 @@
   <section class="section" id="gallery">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Gallery</span>
-        <h2>Moments from our classes.</h2>
+        <span class="marker" data-i18n="marker_gallery">Gallery</span>
+        <h2 data-i18n="h_gallery">Moments from our classes.</h2>
       </div>
       <div class="gallery-grid" id="galleryGrid"></div>
     </div>
@@ -263,8 +276,8 @@
   <section class="section section-tint">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Questions</span>
-        <h2>Things people ask us.</h2>
+        <span class="marker" data-i18n="marker_questions">Questions</span>
+        <h2 data-i18n="h_faq">Things people ask us.</h2>
       </div>
       <div class="accordion" id="faqAccordion"></div>
     </div>
@@ -274,8 +287,8 @@
   <section class="section" id="contact">
     <div class="section-inner">
       <div class="section-head fade-in-up">
-        <span class="marker">Contact</span>
-        <h2>Get in touch.</h2>
+        <span class="marker" data-i18n="marker_contact">Contact</span>
+        <h2 data-i18n="h_contact">Get in touch.</h2>
         <p class="lede" id="contactIntro">Questions, partnership ideas, or ready to volunteer? Send us a message.</p>
       </div>
 
@@ -309,22 +322,22 @@
 
         <form class="contact-form fade-in-up" id="contactForm" novalidate>
           <div class="form-field">
-            <label for="cfName">Your name</label>
+            <label for="cfName" data-i18n="form_name">Your name</label>
             <input type="text" id="cfName" name="name" required autocomplete="name">
           </div>
           <div class="form-field">
-            <label for="cfEmail">Email</label>
+            <label for="cfEmail" data-i18n="form_email">Email</label>
             <input type="email" id="cfEmail" name="email" required autocomplete="email">
           </div>
           <div class="form-field">
-            <label for="cfMessage">Message</label>
+            <label for="cfMessage" data-i18n="form_message">Message</label>
             <textarea id="cfMessage" name="message" required></textarea>
           </div>
           <div class="hp-field" aria-hidden="true">
             <label for="cfBot">Leave this empty</label>
             <input type="text" id="cfBot" name="bot-field" tabindex="-1" autocomplete="off">
           </div>
-          <button type="submit" class="btn btn-primary">Send message</button>
+          <button type="submit" class="btn btn-primary" data-i18n="form_send">Send message</button>
           <p class="form-status" id="formStatus" role="status"></p>
         </form>
       </div>
@@ -344,21 +357,22 @@
       <p>Javanese English Speaking Society — free, peer-taught English education for students across Java.</p>
     </div>
     <div>
-      <h4>Explore</h4>
+      <h4 data-i18n="footer_explore">Explore</h4>
       <ul class="footer-links">
         <li><a href="#about">About</a></li>
         <li><a href="#programs">Programs</a></li>
         <li><a href="#events">Events</a></li>
-        <li><a href="#team">Team</a></li>
+        <li><a href="#team" data-i18n="nav_team">Team</a></li>
+        <li><a href="#news" data-i18n="nav_news">News</a></li>
       </ul>
     </div>
     <div>
-      <h4>Get involved</h4>
+      <h4 data-i18n="footer_involved">Get involved</h4>
       <ul class="footer-links">
         <li><a href="#volunteer">Volunteer</a></li>
         <li><a href="#partners">Partners</a></li>
         <li><a href="#contact">Contact</a></li>
-        <li><a href="admin.html">Staff login</a></li>
+        <li><a href="admin.html" data-i18n="staff_login">Staff login</a></li>
       </ul>
     </div>
   </div>

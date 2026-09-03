@@ -16,7 +16,7 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-function defaultData() {
+function rawDefaultData() {
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -102,6 +102,7 @@ function defaultData() {
       privacyUrl: "#",
       termsUrl: "#"
     },
+    news: [],
     theme: {
       primary: "#2F9E63",
       secondary: "#186A41",
@@ -113,8 +114,101 @@ function defaultData() {
   };
 }
 
+/* The predetermined markers an event can carry. Admin picks from this list
+   rather than typing free text, so the public site can style them and
+   visitors see consistent wording. */
+const EVENT_TAGS = [
+  "Online",
+  "Offline",
+  "Hybrid",
+  "Open to public",
+  "Available to volunteer",
+  "Registration required",
+  "Members only"
+];
+
+/* ------------------------------------------------------------------ *
+ * NORMALISATION — the reason existing content survives upgrades.
+ *
+ * mergeWithDefaults() is a SHALLOW Object.assign: any top-level key the
+ * stored document already has (events, team, contact…) replaces the
+ * default outright. That is fine for brand-new top-level keys such as
+ * `news`, which simply fall through to the default [].
+ *
+ * It is NOT enough for new fields added INSIDE existing items — an event
+ * saved before this version has no `tags` and no `registration`. So after
+ * merging we walk the stored items and fill in only what is missing,
+ * never overwriting a value that is already there. Nothing the admin has
+ * entered is touched; upgrades are additive.
+ * ------------------------------------------------------------------ */
+function normalizeData(data) {
+  const d = data || {};
+
+  // Arrays that must exist even if an older document predates them.
+  ["stats", "programs", "events", "team", "testimonials",
+   "gallery", "partners", "faq", "news"].forEach((k) => {
+    if (!Array.isArray(d[k])) d[k] = [];
+  });
+
+  // Events gained tags + an optional registration block.
+  d.events = d.events.map((e) => ({
+    ...e,
+    id: e.id || uid(),
+    tags: Array.isArray(e.tags) ? e.tags.filter((t) => EVENT_TAGS.includes(t)) : [],
+    registration: {
+      enabled: !!(e.registration && e.registration.enabled),
+      // "form" collects sign-ups into Firestore; "link" sends people to an
+      // external form (Google Forms, etc.) the org may already use.
+      mode: (e.registration && e.registration.mode === "link") ? "link" : "form",
+      url: (e.registration && e.registration.url) || "",
+      askWhy: !!(e.registration && e.registration.askWhy),
+      closed: !!(e.registration && e.registration.closed)
+    }
+  }));
+
+  // News items are new, but normalise defensively in case of a partial import.
+  d.news = d.news.map((n) => ({
+    id: n.id || uid(),
+    title: n.title || "",
+    date: n.date || "",
+    body: n.body || "",
+    published: n.published !== false,
+    title_id: n.title_id || "",
+    body_id: n.body_id || ""
+  }));
+
+  // Indonesian counterparts for translatable content. Empty string means
+  // "not translated yet" and the site falls back to the English text, so
+  // adding the toggle never blanks out anything already written.
+  d.hero = d.hero || {};
+  ["title_id", "subtitle_id", "primaryBtn_id", "secondaryBtn_id"].forEach((k) => {
+    if (typeof d.hero[k] !== "string") d.hero[k] = "";
+  });
+  d.mission = d.mission || {};
+  if (typeof d.mission.vision_id !== "string") d.mission.vision_id = "";
+  if (!Array.isArray(d.mission.missionList_id)) d.mission.missionList_id = [];
+  if (!Array.isArray(d.mission.missionList)) d.mission.missionList = [];
+  d.contact = d.contact || {};
+  if (typeof d.contact.intro_id !== "string") d.contact.intro_id = "";
+
+  d.programs = d.programs.map((p) => ({
+    ...p, title_id: p.title_id || "", desc_id: p.desc_id || ""
+  }));
+  d.faq = d.faq.map((f) => ({ ...f, q_id: f.q_id || "", a_id: f.a_id || "" }));
+
+  return d;
+}
+
 function mergeWithDefaults(remote) {
-  return Object.assign(defaultData(), remote || {});
+  return normalizeData(Object.assign(rawDefaultData(), remote || {}));
+}
+
+/* defaultData() is used directly on several paths — a brand-new site, the
+   offline fallback, and admin's "Reset website" — so it must come out
+   normalised too. Otherwise those paths produce events with no tags or
+   registration block while the Firestore path produces complete ones. */
+function defaultData() {
+  return normalizeData(rawDefaultData());
 }
 
 function getLocalCache() {
@@ -234,6 +328,199 @@ async function saveData(data) {
     return true;
   } catch (e) {
     console.warn("JESS: Firestore save failed — change was kept locally only.", e);
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * LANGUAGE (English / Bahasa Indonesia)
+ *
+ * Two separate things are translated:
+ *  1. Fixed interface labels — the UI_STRINGS table below.
+ *  2. Admin-entered content — via optional "_id" sibling fields
+ *     (title_id, desc_id…). When a translation is blank the English text
+ *     is shown instead, so switching language never blanks the page and
+ *     the org can translate gradually.
+ * ------------------------------------------------------------------ */
+const LANG_KEY = "jess-lang";
+
+const UI_STRINGS = {
+  en: {
+    nav_about: "About", nav_programs: "Programs", nav_events: "Events",
+    nav_team: "Team", nav_volunteer: "Volunteer", nav_partners: "Partners",
+    nav_contact: "Contact", nav_news: "News",
+    search_placeholder: "Search programs, team, events…",
+    marker_about: "About JESS", marker_vision: "Our vision", marker_mission: "Our mission",
+    marker_programs: "Programs", marker_calendar: "Calendar", marker_team: "The team",
+    marker_volunteer: "Volunteer", marker_partners: "Partners", marker_news: "News",
+    marker_testimonials: "In their words", marker_gallery: "Gallery",
+    marker_questions: "Questions", marker_contact: "Contact",
+    h_about: "Peer teaching, at the scale of a movement.",
+    h_vision: "Where we're going", h_mission: "How we get there",
+    h_programs: "What we run.", h_events: "What's coming up.",
+    h_team: "Who runs JESS.", h_volunteer: "Teach the class you wish you'd had.",
+    h_partners: "Schools and organisations we work with.",
+    h_news: "Latest from JESS.", h_testimonials: "What students say.",
+    h_gallery: "Moments from our classes.", h_faq: "Things people ask us.",
+    h_contact: "Get in touch.",
+    select_date: "Select a date", no_events_day: "No events on this day.",
+    choose_day: "Choose a day on the calendar to see its events.",
+    no_upcoming: "No upcoming events yet.", no_news: "No news posts yet.",
+    register: "Register", registration_closed: "Registration closed",
+    register_for: "Register for", full_name: "Your name", email: "Email",
+    phone: "Phone or WhatsApp", role: "I want to join as",
+    participant: "Participant", volunteer: "Volunteer",
+    why_join: "Why do you want to join?", send: "Send", sending: "Sending…",
+    reg_ok: "You're registered. We'll be in touch by email.",
+    reg_fail: "Couldn't send that — please check your connection and try again.",
+    required_fields: "Please fill in your name and email.",
+    days: "Days", hrs: "Hrs", min: "Min", live: "Live",
+    read_more: "Read more", close: "Close",
+    footer_explore: "Explore", footer_involved: "Get involved",
+    staff_login: "Staff login", privacy: "Privacy", terms: "Terms",
+    form_name: "Your name", form_email: "Email", form_message: "Message",
+    form_send: "Send message"
+  },
+  id: {
+    nav_about: "Tentang", nav_programs: "Program", nav_events: "Acara",
+    nav_team: "Tim", nav_volunteer: "Relawan", nav_partners: "Mitra",
+    nav_contact: "Kontak", nav_news: "Berita",
+    search_placeholder: "Cari program, tim, acara…",
+    marker_about: "Tentang JESS", marker_vision: "Visi kami", marker_mission: "Misi kami",
+    marker_programs: "Program", marker_calendar: "Kalender", marker_team: "Tim kami",
+    marker_volunteer: "Relawan", marker_partners: "Mitra", marker_news: "Berita",
+    marker_testimonials: "Kata mereka", marker_gallery: "Galeri",
+    marker_questions: "Pertanyaan", marker_contact: "Kontak",
+    h_about: "Belajar dari sesama pelajar, dalam skala gerakan.",
+    h_vision: "Arah kami", h_mission: "Cara kami mewujudkannya",
+    h_programs: "Yang kami jalankan.", h_events: "Yang akan datang.",
+    h_team: "Pengurus JESS.", h_volunteer: "Ajarkan kelas yang dulu kamu inginkan.",
+    h_partners: "Sekolah dan organisasi mitra kami.",
+    h_news: "Kabar terbaru dari JESS.", h_testimonials: "Kata para siswa.",
+    h_gallery: "Momen dari kelas kami.", h_faq: "Pertanyaan yang sering diajukan.",
+    h_contact: "Hubungi kami.",
+    select_date: "Pilih tanggal", no_events_day: "Tidak ada acara pada hari ini.",
+    choose_day: "Pilih hari pada kalender untuk melihat acaranya.",
+    no_upcoming: "Belum ada acara mendatang.", no_news: "Belum ada berita.",
+    register: "Daftar", registration_closed: "Pendaftaran ditutup",
+    register_for: "Daftar untuk", full_name: "Nama kamu", email: "Email",
+    phone: "Telepon atau WhatsApp", role: "Saya ingin bergabung sebagai",
+    participant: "Peserta", volunteer: "Relawan",
+    why_join: "Mengapa kamu ingin bergabung?", send: "Kirim", sending: "Mengirim…",
+    reg_ok: "Pendaftaran berhasil. Kami akan menghubungi lewat email.",
+    reg_fail: "Gagal mengirim — periksa koneksi lalu coba lagi.",
+    required_fields: "Mohon isi nama dan email kamu.",
+    days: "Hari", hrs: "Jam", min: "Mnt", live: "Berlangsung",
+    read_more: "Selengkapnya", close: "Tutup",
+    footer_explore: "Jelajahi", footer_involved: "Ikut terlibat",
+    staff_login: "Masuk pengurus", privacy: "Privasi", terms: "Ketentuan",
+    form_name: "Nama kamu", form_email: "Email", form_message: "Pesan",
+    form_send: "Kirim pesan"
+  }
+};
+
+// Indonesian labels for the fixed event markers.
+const TAG_LABELS = {
+  id: {
+    "Online": "Daring",
+    "Offline": "Luring",
+    "Hybrid": "Hibrida",
+    "Open to public": "Terbuka untuk umum",
+    "Available to volunteer": "Terbuka untuk relawan",
+    "Registration required": "Perlu pendaftaran",
+    "Members only": "Khusus anggota"
+  }
+};
+
+function getLang() {
+  try {
+    const v = localStorage.getItem(LANG_KEY);
+    return v === "id" ? "id" : "en";
+  } catch (e) { return "en"; }
+}
+
+function setLang(lang) {
+  try { localStorage.setItem(LANG_KEY, lang === "id" ? "id" : "en"); } catch (e) { /* ignore */ }
+}
+
+function t(key, lang) {
+  const l = lang || getLang();
+  return (UI_STRINGS[l] && UI_STRINGS[l][key]) || UI_STRINGS.en[key] || key;
+}
+
+function tagLabel(tag, lang) {
+  const l = lang || getLang();
+  return (TAG_LABELS[l] && TAG_LABELS[l][tag]) || tag;
+}
+
+/* Pick the translated field when present, else fall back to the original.
+   field("title") on an Indonesian page reads obj.title_id, or obj.title
+   when the translation is still blank. */
+function field(obj, name, lang) {
+  const l = lang || getLang();
+  if (!obj) return "";
+  if (l === "id") {
+    const translated = obj[name + "_id"];
+    if (typeof translated === "string" && translated.trim() !== "") return translated;
+  }
+  return obj[name] || "";
+}
+
+/* ------------------------------------------------------------------ *
+ * EVENT REGISTRATIONS
+ *
+ * Sign-ups live in their own top-level collection, NOT inside the site
+ * document — the same reasoning as contact messages. The site doc has a
+ * hard 1MB ceiling shared with every inline photo, so an event that goes
+ * well must not be able to break the whole site by filling it up.
+ * ------------------------------------------------------------------ */
+const REGISTRATIONS_COLLECTION = "registrations";
+
+function registrationsCollection() {
+  return fsFns.collection(db, REGISTRATIONS_COLLECTION);
+}
+
+async function submitRegistration({ eventId, eventTitle, name, email, phone, role, why }) {
+  if (!firebaseReady) return false;
+  try {
+    await fsFns.addDoc(registrationsCollection(), {
+      eventId: String(eventId || ""),
+      eventTitle: String(eventTitle || ""),
+      name: String(name || "").slice(0, 120),
+      email: String(email || "").slice(0, 160),
+      phone: String(phone || "").slice(0, 40),
+      // "participant" or "volunteer" — an event can invite both.
+      role: role === "volunteer" ? "volunteer" : "participant",
+      why: String(why || "").slice(0, 1200),
+      createdAt: Date.now()
+    });
+    return true;
+  } catch (e) {
+    console.warn("JESS: registration failed.", e);
+    return false;
+  }
+}
+
+async function listRegistrations() {
+  if (!firebaseReady) return [];
+  try {
+    const snap = await fsFns.getDocs(registrationsCollection());
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  } catch (e) {
+    console.warn("JESS: could not load registrations.", e);
+    return [];
+  }
+}
+
+async function deleteRegistration(id) {
+  if (!firebaseReady) return false;
+  try {
+    await fsFns.deleteDoc(fsFns.doc(db, REGISTRATIONS_COLLECTION, id));
+    return true;
+  } catch (e) {
+    console.warn("JESS: could not delete registration.", e);
     return false;
   }
 }
@@ -443,6 +730,8 @@ window.JESSData = {
   subscribe, loadOnce, saveData,
   login, logout, onAuthChange,
   submitMessage, listMessages, deleteMessage,
+  submitRegistration, listRegistrations, deleteRegistration,
+  EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
   firebaseReady: () => firebaseReady
 };

@@ -158,6 +158,8 @@
       gallery: panelGallery,
       partners: panelPartners,
       faq: panelFaq,
+      news: panelNews,
+      registrations: panelRegistrations,
       contact: panelContact,
       theme: panelTheme,
       data: panelData
@@ -182,6 +184,17 @@
       <div class="field-group"><label>Vision Statement</label><textarea id="fVision" rows="2">${esc(DATA.mission.vision)}</textarea></div>
       <div class="field-group"><label>Mission Points (one per line)</label><textarea id="fMission" rows="6">${esc(DATA.mission.missionList.join("\n"))}</textarea></div>
 
+      <h3 style="font-size:1.05rem;margin:28px 0 4px;">Bahasa Indonesia</h3>
+      <p class="panel-hint">Optional. Anything left blank falls back to the English text above, so you can translate a bit at a time without the site ever going blank.</p>
+      <div class="field-group"><label>Hero Title (ID)</label><input id="fHeroTitleId" value="${esc(DATA.hero.title_id || "")}"></div>
+      <div class="field-group"><label>Hero Subtitle (ID)</label><textarea id="fHeroSubId" rows="2">${esc(DATA.hero.subtitle_id || "")}</textarea></div>
+      <div class="field-row">
+        <div class="field-group"><label>Primary Button (ID)</label><input id="fHeroBtn1Id" value="${esc(DATA.hero.primaryBtn_id || "")}"></div>
+        <div class="field-group"><label>Secondary Button (ID)</label><input id="fHeroBtn2Id" value="${esc(DATA.hero.secondaryBtn_id || "")}"></div>
+      </div>
+      <div class="field-group"><label>Vision Statement (ID)</label><textarea id="fVisionId" rows="2">${esc(DATA.mission.vision_id || "")}</textarea></div>
+      <div class="field-group"><label>Mission Points (ID, one per line)</label><textarea id="fMissionId" rows="6">${esc((DATA.mission.missionList_id || []).join("\n"))}</textarea></div>
+
       <button class="btn btn-primary" id="saveContent">Save Changes</button>
     `;
     root.querySelector("#saveContent").addEventListener("click", () => {
@@ -191,6 +204,12 @@
       DATA.hero.secondaryBtn = root.querySelector("#fHeroBtn2").value.trim();
       DATA.mission.vision = root.querySelector("#fVision").value.trim();
       DATA.mission.missionList = root.querySelector("#fMission").value.split("\n").map(s => s.trim()).filter(Boolean);
+      DATA.hero.title_id = root.querySelector("#fHeroTitleId").value.trim();
+      DATA.hero.subtitle_id = root.querySelector("#fHeroSubId").value.trim();
+      DATA.hero.primaryBtn_id = root.querySelector("#fHeroBtn1Id").value.trim();
+      DATA.hero.secondaryBtn_id = root.querySelector("#fHeroBtn2Id").value.trim();
+      DATA.mission.vision_id = root.querySelector("#fVisionId").value.trim();
+      DATA.mission.missionList_id = root.querySelector("#fMissionId").value.split("\n").map(s => s.trim()).filter(Boolean);
       saveData();
       toast("Content saved.");
     });
@@ -353,6 +372,10 @@
             <div class="field-group"><label>Title</label><input data-f="title" value="${esc(p.title)}"></div>
           </div>
           <div class="field-group"><label>Description</label><input data-f="desc" value="${esc(p.desc)}"></div>
+          <div class="field-row">
+            <div class="field-group"><label>Title (ID) <span class="opt">optional</span></label><input data-f="title_id" value="${esc(p.title_id || "")}"></div>
+            <div class="field-group"><label>Description (ID) <span class="opt">optional</span></label><input data-f="desc_id" value="${esc(p.desc_id || "")}"></div>
+          </div>
           <div class="admin-item-actions"><button class="danger" data-del>Remove</button></div>
         </div>`).join("");
       root.querySelectorAll("#progList .admin-item-card").forEach(card => {
@@ -400,6 +423,12 @@
             </div>
           </div>
           <div style="font-size:0.85rem;color:var(--color-text-gray)">${e.date} ${e.time || ""} · ${esc(e.location || "")} ${e.recurring !== "none" ? "· recurring " + e.recurring : ""}</div>
+          ${(e.tags && e.tags.length) || (e.registration && e.registration.enabled) ? `
+          <div class="tag-row">
+            ${(e.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}
+            ${e.registration && e.registration.enabled
+              ? `<span class="tag tag-reg">${e.registration.closed ? "Sign-ups closed" : "Sign-ups open"}</span>` : ""}
+          </div>` : ""}
         </div>`).join("") || `<p class="panel-hint">No events match.</p>`;
 
       root.querySelectorAll("#evtList [data-edit]").forEach(b => b.addEventListener("click", () => openEventEditor(b.closest("[data-id]").dataset.id, draw)));
@@ -417,12 +446,15 @@
   }
 
   function openEventEditor(id, onDone) {
+    const TAGS = window.JESSData.EVENT_TAGS;
     const existing = id ? DATA.events.find(e => e.id === id) : null;
     const today = new Date();
     const ev = existing || {
       id: uid(), title: "",
       date: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
-      time: "09:00", desc: "", location: "", color: "#1E88E5", recurring: "none"
+      time: "09:00", desc: "", location: "", color: "#2F9E63", recurring: "none",
+      title_id: "", tags: [],
+      registration: { enabled: false, mode: "form", url: "", askWhy: false, closed: false }
     };
 
     const overlay = document.createElement("div");
@@ -437,8 +469,43 @@
             <div><label>Date</label><input required type="date" id="evDate" value="${ev.date}"></div>
             <div><label>Time</label><input type="time" id="evTime" value="${ev.time}"></div>
           </div>
+          <label>Title (Bahasa Indonesia) <span class="opt">optional</span></label>
+          <input id="evTitleId" value="${esc(ev.title_id || "")}" placeholder="Leave blank to reuse the English title">
           <label>Location</label><input id="evLocation" value="${esc(ev.location)}">
           <label>Description</label><input id="evDesc" value="${esc(ev.desc)}">
+
+          <label>Markers</label>
+          <div class="tag-picker">
+            ${TAGS.map(tag => `
+              <label class="tag-check">
+                <input type="checkbox" value="${esc(tag)}" ${(ev.tags || []).includes(tag) ? "checked" : ""}>
+                <span>${esc(tag)}</span>
+              </label>`).join("")}
+          </div>
+
+          <label class="switch-row">
+            <input type="checkbox" id="evRegEnabled" ${ev.registration && ev.registration.enabled ? "checked" : ""}>
+            <span>Let people sign up for this event</span>
+          </label>
+          <div id="regOptions" ${ev.registration && ev.registration.enabled ? "" : "hidden"}>
+            <label>Sign-up handled by</label>
+            <select id="evRegMode">
+              <option value="form" ${!ev.registration || ev.registration.mode !== "link" ? "selected" : ""}>A form on this site</option>
+              <option value="link" ${ev.registration && ev.registration.mode === "link" ? "selected" : ""}>An external link (Google Forms, etc.)</option>
+            </select>
+            <div id="regUrlWrap" ${ev.registration && ev.registration.mode === "link" ? "" : "hidden"}>
+              <label>External form URL</label>
+              <input id="evRegUrl" value="${esc((ev.registration && ev.registration.url) || "")}" placeholder="https://forms.gle/…">
+            </div>
+            <label class="switch-row">
+              <input type="checkbox" id="evRegAskWhy" ${ev.registration && ev.registration.askWhy ? "checked" : ""}>
+              <span>Ask why they want to join</span>
+            </label>
+            <label class="switch-row">
+              <input type="checkbox" id="evRegClosed" ${ev.registration && ev.registration.closed ? "checked" : ""}>
+              <span>Close sign-ups (keeps the event visible)</span>
+            </label>
+          </div>
           <div class="field-row">
             <div><label>Color</label><input type="color" id="evColor" value="${ev.color}"></div>
             <div><label>Recurring</label>
@@ -456,17 +523,41 @@
     overlay.querySelector(".modal-close").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 
+    // Show the sign-up options only when sign-ups are switched on, and the
+    // URL field only when an external form is chosen.
+    const regChk = overlay.querySelector("#evRegEnabled");
+    const regOpts = overlay.querySelector("#regOptions");
+    const regMode = overlay.querySelector("#evRegMode");
+    const regUrlWrap = overlay.querySelector("#regUrlWrap");
+    regChk.addEventListener("change", () => { regOpts.hidden = !regChk.checked; });
+    regMode.addEventListener("change", () => { regUrlWrap.hidden = regMode.value !== "link"; });
+
     overlay.querySelector("#eventForm").addEventListener("submit", (e) => {
       e.preventDefault();
+      const tags = Array.from(overlay.querySelectorAll(".tag-picker input:checked"))
+        .map(cb => cb.value);
+      const regEnabled = overlay.querySelector("#evRegEnabled").checked;
       const updated = {
+        // Spread the existing event first so any field this form does not
+        // manage (now or in future) survives the edit untouched.
+        ...(existing || ev),
         id: ev.id,
         title: overlay.querySelector("#evTitle").value.trim(),
+        title_id: overlay.querySelector("#evTitleId").value.trim(),
         date: overlay.querySelector("#evDate").value,
         time: overlay.querySelector("#evTime").value,
         location: overlay.querySelector("#evLocation").value.trim(),
         desc: overlay.querySelector("#evDesc").value.trim(),
         color: overlay.querySelector("#evColor").value,
-        recurring: overlay.querySelector("#evRecurring").value
+        recurring: overlay.querySelector("#evRecurring").value,
+        tags,
+        registration: {
+          enabled: regEnabled,
+          mode: overlay.querySelector("#evRegMode").value === "link" ? "link" : "form",
+          url: overlay.querySelector("#evRegUrl") ? overlay.querySelector("#evRegUrl").value.trim() : "",
+          askWhy: overlay.querySelector("#evRegAskWhy").checked,
+          closed: overlay.querySelector("#evRegClosed").checked
+        }
       };
       if (existing) {
         Object.assign(existing, updated);
@@ -706,6 +797,8 @@
         <div class="admin-item-card" data-i="${i}">
           <div class="field-group"><label>Question</label><input data-f="q" value="${esc(f.q)}"></div>
           <div class="field-group"><label>Answer</label><textarea rows="2" data-f="a">${esc(f.a)}</textarea></div>
+          <div class="field-group"><label>Question (ID) <span class="opt">optional</span></label><input data-f="q_id" value="${esc(f.q_id || "")}"></div>
+          <div class="field-group"><label>Answer (ID) <span class="opt">optional</span></label><textarea rows="2" data-f="a_id">${esc(f.a_id || "")}</textarea></div>
           <div class="admin-item-actions"><button class="danger" data-del>Remove</button></div>
         </div>`).join("");
       root.querySelectorAll("#faqList .admin-item-card").forEach(card => {
@@ -722,6 +815,153 @@
     root.querySelector("#addFaq").addEventListener("click", () => {
       DATA.faq.push({ id: uid(), q: "New question?", a: "Answer here." });
       saveData(); draw();
+    });
+  }
+
+  /* ---- News panel ---- */
+  function panelNews(root) {
+    root.innerHTML = `
+      <h2>News</h2>
+      <p class="panel-hint">Short updates shown on the homepage, newest first. Untick "Published" to draft a post without showing it publicly.</p>
+      <div class="admin-card-list" id="newsList"></div>
+      <button class="btn btn-outline" id="addNews">+ Add post</button>
+    `;
+    function draw() {
+      const posts = DATA.news.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+      root.querySelector("#newsList").innerHTML = posts.length ? posts.map((n) => `
+        <div class="admin-item-card" data-id="${n.id}">
+          <div class="field-row">
+            <div class="field-group"><label>Title</label><input data-f="title" value="${esc(n.title)}"></div>
+            <div class="field-group"><label>Date</label><input type="date" data-f="date" value="${esc(n.date)}"></div>
+          </div>
+          <div class="field-group"><label>Body</label><textarea rows="4" data-f="body">${esc(n.body)}</textarea></div>
+          <div class="field-group">
+            <label>Title (Bahasa Indonesia) <span class="opt">optional</span></label>
+            <input data-f="title_id" value="${esc(n.title_id || "")}" placeholder="Leave blank to reuse the English title">
+          </div>
+          <div class="field-group">
+            <label>Body (Bahasa Indonesia) <span class="opt">optional</span></label>
+            <textarea rows="4" data-f="body_id" placeholder="Leave blank to reuse the English body">${esc(n.body_id || "")}</textarea>
+          </div>
+          <label class="switch-row">
+            <input type="checkbox" data-pub ${n.published !== false ? "checked" : ""}>
+            <span>Published</span>
+          </label>
+          <div class="admin-item-actions"><button class="danger" data-del>Remove</button></div>
+        </div>`).join("") : `<p class="panel-hint">No posts yet.</p>`;
+
+      root.querySelectorAll("#newsList .admin-item-card").forEach(card => {
+        const id = card.dataset.id;
+        const item = DATA.news.find(x => String(x.id) === String(id));
+        if (!item) return;
+        card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
+          item[inp.dataset.f] = inp.value; saveData();
+        }));
+        card.querySelector("[data-pub]").addEventListener("change", (e) => {
+          item.published = e.target.checked; saveData();
+        });
+        card.querySelector("[data-del]").addEventListener("click", () => {
+          if (!confirm("Remove this post?")) return;
+          DATA.news = DATA.news.filter(x => String(x.id) !== String(id));
+          saveData(); draw(); toast("Post removed.");
+        });
+      });
+    }
+    draw();
+    root.querySelector("#addNews").addEventListener("click", () => {
+      const today = new Date();
+      const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", published: true, title_id: "", body_id: "" });
+      saveData(); draw();
+    });
+  }
+
+  /* ---- Registrations panel ---- */
+  function panelRegistrations(root) {
+    root.innerHTML = `
+      <h2>Sign-ups</h2>
+      <p class="panel-hint">People who registered for an event through the site. Stored separately from your site content, so they never count against the page's storage limit.</p>
+      <div class="admin-toolbar">
+        <input type="search" id="regSearch" placeholder="Search by name, email, or event…">
+        <button class="btn btn-outline" id="regExport">Export CSV</button>
+      </div>
+      <div id="regLoading" style="color:var(--color-text-gray);font-size:0.9rem;">Loading sign-ups…</div>
+      <div class="admin-card-list" id="regList"></div>
+    `;
+    let all = [];
+    let filter = "";
+
+    function when(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+        " at " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function draw() {
+      const q = filter.toLowerCase();
+      const rows = all.filter(r => !q ||
+        (r.name || "").toLowerCase().includes(q) ||
+        (r.email || "").toLowerCase().includes(q) ||
+        (r.eventTitle || "").toLowerCase().includes(q));
+
+      const listEl = root.querySelector("#regList");
+      if (!rows.length) {
+        listEl.innerHTML = `<p class="panel-hint">${all.length ? "No sign-ups match that search." : "No sign-ups yet."}</p>`;
+        return;
+      }
+      listEl.innerHTML = rows.map(r => `
+        <div class="admin-item-card" data-id="${r.id}">
+          <div class="admin-item-card-head">
+            <strong>${esc(r.name || "(no name)")}</strong>
+            <div class="admin-item-actions"><button class="danger" data-del>Delete</button></div>
+          </div>
+          <div class="tag-row">
+            <span class="tag${r.role === "volunteer" ? " tag-volunteer" : ""}">${r.role === "volunteer" ? "Volunteer" : "Participant"}</span>
+            <span class="tag">${esc(r.eventTitle || "(event removed)")}</span>
+          </div>
+          <div style="font-size:0.9rem;margin-top:8px;">
+            ${esc(r.email || "")}${r.phone ? " · " + esc(r.phone) : ""}
+          </div>
+          ${r.why ? `<div style="font-size:0.92rem;margin-top:8px;white-space:pre-wrap;">${esc(r.why)}</div>` : ""}
+          <div style="font-size:0.8rem;color:var(--color-text-gray);margin-top:8px;">${when(r.createdAt)}</div>
+        </div>`).join("");
+
+      listEl.querySelectorAll("[data-del]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.closest("[data-id]").dataset.id;
+          if (!confirm("Delete this sign-up? This can't be undone.")) return;
+          window.JESSData.deleteRegistration(id).then(() => {
+            all = all.filter(x => x.id !== id);
+            toast("Sign-up deleted.");
+            draw();
+          });
+        });
+      });
+    }
+
+    root.querySelector("#regSearch").addEventListener("input", (e) => { filter = e.target.value; draw(); });
+
+    root.querySelector("#regExport").addEventListener("click", () => {
+      if (!all.length) { toast("Nothing to export yet."); return; }
+      const cell = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+      const csv = ["Name,Email,Phone,Role,Event,Why,Registered"]
+        .concat(all.map(r => [r.name, r.email, r.phone, r.role, r.eventTitle, r.why,
+          r.createdAt ? new Date(r.createdAt).toISOString() : ""].map(cell).join(",")))
+        .join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "jess-signups.csv"; a.click();
+      URL.revokeObjectURL(url);
+      toast("Exported.");
+    });
+
+    window.JESSData.listRegistrations().then((rows) => {
+      all = rows;
+      const loading = root.querySelector("#regLoading");
+      if (loading) loading.remove();
+      draw();
     });
   }
 
