@@ -490,12 +490,13 @@
           <div id="regOptions" ${ev.registration && ev.registration.enabled ? "" : "hidden"}>
             <label>Sign-up handled by</label>
             <select id="evRegMode">
-              <option value="form" ${!ev.registration || ev.registration.mode !== "link" ? "selected" : ""}>A form on this site</option>
-              <option value="link" ${ev.registration && ev.registration.mode === "link" ? "selected" : ""}>An external link (Google Forms, etc.)</option>
+              <option value="form" ${!ev.registration || ev.registration.mode !== "link" ? "selected" : ""}>A form on this site (collects sign-ups here, visible in the Sign-ups panel)</option>
+              <option value="link" ${ev.registration && ev.registration.mode === "link" ? "selected" : ""}>Google Form (or any other link)</option>
             </select>
             <div id="regUrlWrap" ${ev.registration && ev.registration.mode === "link" ? "" : "hidden"}>
-              <label>External form URL</label>
-              <input id="evRegUrl" value="${esc((ev.registration && ev.registration.url) || "")}" placeholder="https://forms.gle/…">
+              <label>Google Form link</label>
+              <input id="evRegUrl" type="url" value="${esc((ev.registration && ev.registration.url) || "")}" placeholder="https://forms.gle/… or https://docs.google.com/forms/…">
+              <p class="field-note">Open your Google Form, click Send, copy the link, and paste it here. The Register button will open it in a new tab.</p>
             </div>
             <label class="switch-row">
               <input type="checkbox" id="evRegAskWhy" ${ev.registration && ev.registration.askWhy ? "checked" : ""}>
@@ -537,6 +538,12 @@
       const tags = Array.from(overlay.querySelectorAll(".tag-picker input:checked"))
         .map(cb => cb.value);
       const regEnabled = overlay.querySelector("#evRegEnabled").checked;
+      const regModeVal = overlay.querySelector("#evRegMode").value;
+      const regUrlVal = overlay.querySelector("#evRegUrl") ? overlay.querySelector("#evRegUrl").value.trim() : "";
+      if (regEnabled && regModeVal === "link" && !regUrlVal) {
+        alert("Add the Google Form link, or switch sign-up back to \"A form on this site\".");
+        return;
+      }
       const updated = {
         // Spread the existing event first so any field this form does not
         // manage (now or in future) survives the edit untouched.
