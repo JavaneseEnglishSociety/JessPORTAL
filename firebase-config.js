@@ -21,3 +21,14 @@ window.FIREBASE_CONFIG = {
 // Must match the isAdmin() check in firestore.rules exactly, or every
 // write from the admin panel is rejected with permission-denied.
 window.FIREBASE_ADMIN_EMAIL = "begawanbillykurniawan@gmail.com";
+
+// TEMPORARY placeholder password for testing — visible in this repo on
+// purpose, per instruction, since the site holds no real user data yet
+// and access will be locked down (repo made private / site taken down)
+// once testing is done. This value is NOT itself the security boundary:
+// Firebase Authentication still has to accept it, so the ACTUAL account
+// password in Firebase Console (Authentication > Users > that account >
+// Edit user) must be set to this exact same string, or login will fail.
+// If you ever change this line, change the Firebase Console password to
+// match — the two are not automatically linked.
+window.FIREBASE_ADMIN_PASSWORD = "JESSPassword";

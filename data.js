@@ -678,6 +678,16 @@ async function deleteApplication(id) {
 function login(password) {
   if (!firebaseReady) return Promise.reject(new Error("Firebase is not configured yet."));
   const email = window.FIREBASE_ADMIN_EMAIL || "staff@jess.internal";
+  // Compares against the placeholder stored in firebase-config.js before
+  // ever contacting Firebase, so a wrong guess fails fast with a normal
+  // "incorrect password" message instead of a network round trip. The
+  // Firebase call still happens afterward and is still the real check —
+  // this constant has to match the actual Firebase account password for
+  // sign-in to succeed at all.
+  const expected = window.FIREBASE_ADMIN_PASSWORD;
+  if (expected && password !== expected) {
+    return Promise.reject(new Error("Wrong password."));
+  }
   return authFns.signInWithEmailAndPassword(auth, email, password);
 }
 
