@@ -721,6 +721,12 @@ p { max-width: 68ch; }
   overflow: hidden;
 }
 
+/* Defense in depth: the [hidden] attribute already makes browsers apply
+   display:none, but this makes it non-negotiable regardless of what other
+   rule might otherwise apply to this element, so the dashboard can never
+   render even for a single frame before JS has confirmed who's signed in. */
+#adminDashboard[hidden] { display: none !important; }
+
 .admin-sidebar {
   width: 236px; flex-shrink: 0;
   display: flex; flex-direction: column;

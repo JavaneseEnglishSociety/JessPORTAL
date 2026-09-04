@@ -121,13 +121,30 @@
 
   // Firebase tells us whenever sign-in state changes (initial load,
   // successful login, or logout) — this drives which screen is shown.
+  //
+  // BUG FIXED HERE: this used to check only `if (user)` — true for ANY
+  // signed-in Firebase account, not specifically the admin. JessEdu
+  // shares this same Firebase project and lets students create their
+  // own accounts; if a student was signed into JessEdu on this browser,
+  // that session carries over here too, and the dashboard would open
+  // with no password prompt at all. The fix: require the signed-in
+  // account's email to exactly match the admin email, and forcibly
+  // sign out anyone else so a stray non-admin session can never leave
+  // this page half-authenticated.
   window.JESSData.onAuthChange((user) => {
-    if (user) {
+    const adminEmail = window.FIREBASE_ADMIN_EMAIL;
+    if (user && adminEmail && user.email === adminEmail) {
       window.JESSData.loadOnce().then((data) => {
         DATA = data;
         showDashboard();
       });
     } else {
+      if (user) {
+        // Signed in, but as someone other than the admin — don't just
+        // hide the dashboard, actually end that session so it can't
+        // linger and re-trigger this on the next reload either.
+        window.JESSData.logout();
+      }
       showGate();
     }
   });
