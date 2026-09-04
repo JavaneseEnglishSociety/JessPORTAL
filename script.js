@@ -105,10 +105,22 @@
   }
 
   function renderPartners() {
-    document.getElementById("partnersGrid").innerHTML = DATA.partners.map(p => `
-      <a class="partner-logo fade-in-up visible" href="${esc(p.url || '#')}" target="_blank" rel="noopener">
-        ${p.logo ? `<img src="${esc(p.logo)}" alt="${esc(p.name)}">` : `<span>${esc(p.name)}</span>`}
-      </a>`).join("");
+    document.getElementById("partnersGrid").innerHTML = DATA.partners.map(p => {
+      const shape = p.frameShape === "circle" ? "shape-circle" : "shape-square";
+      const frameInner = p.logo
+        ? `<img src="${esc(p.logo)}" alt="${esc(p.name)}">`
+        : `<span class="partner-initials">${esc((p.name || "?").trim().charAt(0).toUpperCase())}</span>`;
+      const desc = field(p, "description");
+      return `
+      <div class="partner-card fade-in-up visible">
+        <div class="partner-frame ${shape}">${frameInner}</div>
+        <h3 class="partner-name">${esc(p.name)}</h3>
+        ${desc ? `<p class="partner-desc">${esc(desc)}</p>` : ""}
+        ${p.showButton !== false && p.url
+          ? `<a class="btn btn-outline btn-sm partner-visit" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(L.t("visit_website", lang))}</a>`
+          : ""}
+      </div>`;
+    }).join("");
   }
 
   function renderGallery() {

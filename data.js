@@ -196,6 +196,18 @@ function normalizeData(data) {
   }));
   d.faq = d.faq.map((f) => ({ ...f, q_id: f.q_id || "", a_id: f.a_id || "" }));
 
+  // Partners gained a description, a logo frame shape, and a choice of
+  // whether to show a "Visit website" button — older saved partners had
+  // none of this, so fill in sensible defaults without touching name,
+  // url, or logo, which are already there.
+  d.partners = d.partners.map((p) => ({
+    ...p,
+    description: p.description || "",
+    description_id: p.description_id || "",
+    frameShape: p.frameShape === "circle" ? "circle" : "square",
+    showButton: p.showButton !== false
+  }));
+
   return d;
 }
 
@@ -394,7 +406,8 @@ const UI_STRINGS = {
     confirm_code: "Confirmation code", check: "Check",
     code_not_found: "We couldn't find an application with that code. Double-check it and try again.",
     status_pending: "Under review", status_accepted: "Accepted!", status_declined: "Not selected this time",
-    check_email_notice: "Please check your email for next steps."
+    check_email_notice: "Please check your email for next steps.",
+    visit_website: "Visit website"
   },
   id: {
     nav_about: "Tentang", nav_programs: "Program", nav_events: "Acara",
@@ -445,7 +458,8 @@ const UI_STRINGS = {
     confirm_code: "Kode konfirmasi", check: "Cek",
     code_not_found: "Kami tidak menemukan pendaftaran dengan kode itu. Periksa kembali dan coba lagi.",
     status_pending: "Sedang ditinjau", status_accepted: "Diterima!", status_declined: "Belum berhasil kali ini",
-    check_email_notice: "Silakan periksa email untuk langkah selanjutnya."
+    check_email_notice: "Silakan periksa email untuk langkah selanjutnya.",
+    visit_website: "Kunjungi situs"
   }
 };
 

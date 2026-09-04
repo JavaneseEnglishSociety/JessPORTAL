@@ -801,7 +801,7 @@
   function panelPartners(root) {
     root.innerHTML = `
       <h2>Partners</h2>
-      <p class="panel-hint">Partner logos link out to their websites.</p>
+      <p class="panel-hint">Each partner shows their logo in a frame you choose, a short description, and an optional button linking to their website.</p>
       <div class="admin-card-list" id="partList"></div>
       <button class="btn btn-outline" id="addPart">+ Add Partner</button>
     `;
@@ -813,6 +813,30 @@
             <div class="field-group"><label>Website URL</label><input data-f="url" value="${esc(p.url)}"></div>
           </div>
           <div class="field-group"><label>Logo</label><input type="file" accept="image/*" data-photo></div>
+          ${p.logo ? `<div class="partner-logo-preview"><div class="partner-frame shape-${p.frameShape === "circle" ? "circle" : "square"}"><img src="${esc(p.logo)}" alt=""></div></div>` : ""}
+
+          <div class="field-group">
+            <label>Logo frame</label>
+            <div class="tag-picker" style="grid-template-columns:repeat(2,1fr);">
+              <label class="tag-check">
+                <input type="radio" name="frame-${i}" value="square" data-frame ${p.frameShape !== "circle" ? "checked" : ""}>
+                <span>▢ Square</span>
+              </label>
+              <label class="tag-check">
+                <input type="radio" name="frame-${i}" value="circle" data-frame ${p.frameShape === "circle" ? "checked" : ""}>
+                <span>◯ Circle</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group"><label>Description</label><textarea rows="2" data-f="description" placeholder="A line or two about this partner">${esc(p.description || "")}</textarea></div>
+          <div class="field-group"><label>Description (ID) <span class="opt">optional</span></label><textarea rows="2" data-f="description_id">${esc(p.description_id || "")}</textarea></div>
+
+          <label class="switch-row">
+            <input type="checkbox" data-show-btn ${p.showButton !== false ? "checked" : ""}>
+            <span>Show a "Visit website" button</span>
+          </label>
+
           <div class="admin-item-actions">
             <button class="move" data-up>↑</button>
             <button class="move" data-down>↓</button>
@@ -825,6 +849,14 @@
         card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
           DATA.partners[i][inp.dataset.f] = inp.value; saveData();
         }));
+        card.querySelectorAll("[data-frame]").forEach(radio => radio.addEventListener("change", (e) => {
+          if (!e.target.checked) return;
+          DATA.partners[i].frameShape = e.target.value;
+          saveData(); draw();
+        }));
+        card.querySelector("[data-show-btn]").addEventListener("change", (e) => {
+          DATA.partners[i].showButton = e.target.checked; saveData();
+        });
         card.querySelector("[data-photo]").addEventListener("change", (e) => {
           const file = e.target.files[0];
           if (!file) return;
@@ -832,6 +864,7 @@
           compressImage(file, 320, 0.8).then((url) => {
             DATA.partners[i].logo = url;
             saveData().then((ok) => toast(ok === false ? "Saved locally, but couldn't reach Firestore — check your connection." : "Logo updated."));
+            draw();
           }).catch(() => toast("Couldn't process that image — try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
@@ -847,7 +880,10 @@
     }
     draw();
     root.querySelector("#addPart").addEventListener("click", () => {
-      DATA.partners.push({ id: uid(), name: "New Partner", url: "#", logo: "" });
+      DATA.partners.push({
+        id: uid(), name: "New Partner", url: "#", logo: "",
+        description: "", description_id: "", frameShape: "square", showButton: true
+      });
       saveData(); draw();
     });
   }
