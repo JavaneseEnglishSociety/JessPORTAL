@@ -107,10 +107,28 @@
     window.JESSData.login(val)
       .catch((err) => {
         console.warn("JESS admin login failed:", err);
-        document.getElementById("loginStatus").textContent =
-          !window.JESSData.firebaseReady()
-            ? "Firebase isn't configured yet — see firebase-config.js."
-            : "Incorrect password. Please try again.";
+        const statusEl = document.getElementById("loginStatus");
+        const code = (err && err.code) || "";
+        if (!window.JESSData.firebaseReady()) {
+          statusEl.textContent = "Firebase isn't configured yet — see firebase-config.js.";
+        } else if (err && err.message === "Wrong password.") {
+          // Rejected locally, before ever contacting Firebase — the typed
+          // value just doesn't match window.FIREBASE_ADMIN_PASSWORD.
+          statusEl.textContent = "Incorrect password.";
+        } else if (/wrong-password|invalid-credential|invalid-login-credentials/i.test(code)) {
+          // The typed value DID match the placeholder in firebase-config.js,
+          // but Firebase itself rejected it — meaning the real account
+          // password in Firebase Console hasn't been set to match yet.
+          statusEl.textContent =
+            "That's the correct placeholder, but the real Firebase account password doesn't match it yet. " +
+            "Go to Firebase Console → Authentication → Users → Edit user, and set the password to the same value as FIREBASE_ADMIN_PASSWORD in firebase-config.js.";
+        } else if (code === "auth/user-not-found") {
+          statusEl.textContent = "No account with that email exists in Firebase Authentication.";
+        } else if (code === "auth/too-many-requests") {
+          statusEl.textContent = "Too many attempts — Firebase has temporarily blocked this. Wait a few minutes and try again.";
+        } else {
+          statusEl.textContent = "Incorrect password. Please try again.";
+        }
       })
       .finally(() => { submitBtn.disabled = false; });
   });
