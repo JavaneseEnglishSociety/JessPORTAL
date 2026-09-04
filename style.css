@@ -1221,3 +1221,27 @@ img.team-photo { object-fit: cover; }
 
 .partner-logo-preview { margin: 4px 0 14px; }
 .partner-logo-preview .partner-frame { width: 64px; height: 64px; margin: 0; }
+
+/* ---- Persistent "Save Changes" button (sidebar) ---- */
+.admin-save-block { margin: 4px 0 14px; }
+#saveChangesBtn {
+  width: 100%; text-align: center;
+  transition: background var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast);
+}
+#saveChangesBtn:disabled {
+  opacity: 0.55; cursor: default;
+  background: var(--color-bg); color: var(--color-text-gray);
+  border-color: var(--color-border-soft); box-shadow: none;
+}
+#saveChangesBtn.has-changes {
+  background: var(--color-primary); color: #fff;
+  animation: save-pulse 1.6s ease-in-out infinite;
+}
+@keyframes save-pulse {
+  0%, 100% { box-shadow: var(--edge-sm); }
+  50% { box-shadow: 0 0 0 3px rgba(47,158,99,0.25), var(--edge-sm); }
+}
+.admin-save-status {
+  margin: 8px 0 0; font-size: 0.8rem; text-align: center;
+  color: var(--color-text-gray); min-height: 1.1em;
+}

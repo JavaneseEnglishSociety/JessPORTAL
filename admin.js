@@ -1,8 +1,14 @@
 /* ==========================================================================
    JESS — Javanese English Speaking Society
    admin.js — Staff Admin Portal logic. Password-gated (session-based).
-   Every panel reads/writes DATA and calls saveData(), which persists to the
-   SAME localStorage key the public site (script.js) reads from.
+   Every panel edits DATA in memory only (markDirty()) — nothing touches
+   Firestore until the persistent "Save Changes" button is clicked, which
+   calls persistNow() once for the whole document. Editing used to call
+   saveData() on every keystroke, drag, and toggle; that meant a fast
+   typist or a slow connection could fire a dozen overlapping Firestore
+   writes for one sentence, and a later write finishing before an earlier
+   one could visibly revert a character — which is what made it feel
+   "buggy". Batching into one explicit save removes that entirely.
    ========================================================================== */
 
 (function () {
@@ -13,25 +19,65 @@
   const { saveData: persist, uid } = window.JESSData;
   let DATA = null;
   let lastSaveFailureToastAt = 0;
-  function saveData() {
-    if (!DATA) return Promise.resolve(false);
+  let isDirty = false;
+  let isSaving = false;
+
+  // Reference to the persistent Save button + its status text, set once
+  // per dashboard injection by wireDashboardNav() (see below) since the
+  // sidebar markup doesn't exist until after login.
+  let saveBtn = null;
+  let saveStatusEl = null;
+
+  function markDirty() {
+    isDirty = true;
+    updateSaveUI();
+  }
+
+  function updateSaveUI() {
+    if (!saveBtn || !saveStatusEl) return;
+    if (isSaving) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving…";
+      saveStatusEl.textContent = "";
+      return;
+    }
+    saveBtn.disabled = !isDirty;
+    saveBtn.textContent = isDirty ? "Save Changes" : "Saved";
+    saveBtn.classList.toggle("has-changes", isDirty);
+    saveStatusEl.textContent = isDirty ? "You have unsaved changes." : "";
+  }
+
+  // The actual network write — only ever called from the Save button now.
+  function persistNow() {
+    if (!DATA || isSaving) return Promise.resolve(false);
+    isSaving = true;
+    updateSaveUI();
     return persist(DATA).then((ok) => {
-      // persist() resolves false when the write never reached Firestore
-      // (permission error, session expired, offline, etc.) — the edit
-      // still gets cached in THIS browser, which is exactly why changes
-      // can look like they "worked" locally but never show up anywhere
-      // else. Surface it instead of failing silently, but debounce so
-      // typing in a text field doesn't spam a toast per keystroke.
+      isSaving = false;
       if (ok === false) {
         const now = Date.now();
         if (now - lastSaveFailureToastAt > 4000) {
           lastSaveFailureToastAt = now;
           toast("⚠️ Not saved to Firestore — you may be signed out, or offline. Refresh and log in again.");
         }
+        // Leave isDirty true — the edits are still only in memory/local
+        // cache, and the button should keep inviting a retry.
+        updateSaveUI();
+      } else {
+        isDirty = false;
+        toast("Saved.");
+        updateSaveUI();
       }
       return ok;
     });
   }
+
+  // A safety net: warn before leaving the tab if there's anything the
+  // Save button hasn't sent yet, so an accidental tab close or reload
+  // can't silently discard edits sitting only in memory.
+  window.addEventListener("beforeunload", (e) => {
+    if (isDirty) { e.preventDefault(); e.returnValue = ""; }
+  });
 
   /* ------------------------------------------------------------------ *
    * TOAST
@@ -113,6 +159,10 @@
           <button data-panel="theme">Theme</button>
           <button data-panel="data">Data</button>
         </nav>
+        <div class="admin-save-block">
+          <button class="btn btn-primary" id="saveChangesBtn" disabled>Saved</button>
+          <p class="admin-save-status" id="saveStatus"></p>
+        </div>
         <a class="btn btn-outline admin-exit" href="index.html" style="text-align:center;text-decoration:none;">View site</a>
         <button class="btn btn-outline admin-exit" id="logoutBtn">Sign out</button>
       </aside>
@@ -124,7 +174,16 @@
 
   function wireDashboardNav() {
     adminContent = document.getElementById("adminContent");
+    saveBtn = document.getElementById("saveChangesBtn");
+    saveStatusEl = document.getElementById("saveStatus");
+    isDirty = false;
+    isSaving = false;
+    updateSaveUI();
+
+    saveBtn.addEventListener("click", () => { persistNow(); });
+
     document.getElementById("logoutBtn").addEventListener("click", () => {
+      if (isDirty && !confirm("You have unsaved changes that will be lost. Sign out anyway?")) return;
       window.JESSData.logout();
     });
     document.getElementById("adminNav").addEventListener("click", (e) => {
@@ -255,25 +314,29 @@
       </div>
       <div class="field-group"><label>Vision Statement (ID)</label><textarea id="fVisionId" rows="2">${esc(DATA.mission.vision_id || "")}</textarea></div>
       <div class="field-group"><label>Mission Points (ID, one per line)</label><textarea id="fMissionId" rows="6">${esc((DATA.mission.missionList_id || []).join("\n"))}</textarea></div>
-
-      <button class="btn btn-primary" id="saveContent">Save Changes</button>
     `;
-    root.querySelector("#saveContent").addEventListener("click", () => {
-      DATA.hero.title = root.querySelector("#fHeroTitle").value.trim() || DATA.hero.title;
-      DATA.hero.subtitle = root.querySelector("#fHeroSub").value.trim();
-      DATA.hero.primaryBtn = root.querySelector("#fHeroBtn1").value.trim();
-      DATA.hero.secondaryBtn = root.querySelector("#fHeroBtn2").value.trim();
-      DATA.mission.vision = root.querySelector("#fVision").value.trim();
-      DATA.mission.missionList = root.querySelector("#fMission").value.split("\n").map(s => s.trim()).filter(Boolean);
-      DATA.hero.title_id = root.querySelector("#fHeroTitleId").value.trim();
-      DATA.hero.subtitle_id = root.querySelector("#fHeroSubId").value.trim();
-      DATA.hero.primaryBtn_id = root.querySelector("#fHeroBtn1Id").value.trim();
-      DATA.hero.secondaryBtn_id = root.querySelector("#fHeroBtn2Id").value.trim();
-      DATA.mission.vision_id = root.querySelector("#fVisionId").value.trim();
-      DATA.mission.missionList_id = root.querySelector("#fMissionId").value.split("\n").map(s => s.trim()).filter(Boolean);
-      saveData();
-      toast("Content saved.");
-    });
+    // Every field updates DATA in memory as you type and marks the
+    // document dirty — nothing reaches Firestore until the "Save
+    // Changes" button in the sidebar is clicked, same as every other
+    // panel. (This used to be its own separate "Save Changes" button
+    // that only covered this panel's fields; consolidated so there's
+    // one save action for the whole admin, not two buttons with the
+    // same name doing different things.)
+    const bind = (id, apply) => {
+      root.querySelector(id).addEventListener("input", (e) => { apply(e.target.value); markDirty(); });
+    };
+    bind("#fHeroTitle", (v) => { DATA.hero.title = v; });
+    bind("#fHeroSub", (v) => { DATA.hero.subtitle = v; });
+    bind("#fHeroBtn1", (v) => { DATA.hero.primaryBtn = v; });
+    bind("#fHeroBtn2", (v) => { DATA.hero.secondaryBtn = v; });
+    bind("#fVision", (v) => { DATA.mission.vision = v; });
+    bind("#fMission", (v) => { DATA.mission.missionList = v.split("\n").map(s => s.trim()).filter(Boolean); });
+    bind("#fHeroTitleId", (v) => { DATA.hero.title_id = v; });
+    bind("#fHeroSubId", (v) => { DATA.hero.subtitle_id = v; });
+    bind("#fHeroBtn1Id", (v) => { DATA.hero.primaryBtn_id = v; });
+    bind("#fHeroBtn2Id", (v) => { DATA.hero.secondaryBtn_id = v; });
+    bind("#fVisionId", (v) => { DATA.mission.vision_id = v; });
+    bind("#fMissionId", (v) => { DATA.mission.missionList_id = v.split("\n").map(s => s.trim()).filter(Boolean); });
   }
 
   /* ---- Messages panel: contact form submissions, deleted manually ---- */
@@ -403,17 +466,17 @@
       root.querySelectorAll("#statsList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
-          DATA.stats[i][inp.dataset.f] = inp.value; saveData();
+          DATA.stats[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.stats.splice(i, 1); saveData(); draw(); toast("Statistic removed.");
+          DATA.stats.splice(i, 1); markDirty(); draw(); toast("Statistic removed — click \"Save Changes\" to publish.");
         });
       });
     }
     draw();
     root.querySelector("#addStat").addEventListener("click", () => {
       DATA.stats.push({ id: uid(), number: "0+", label: "New Stat" });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -442,17 +505,17 @@
       root.querySelectorAll("#progList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
-          DATA.programs[i][inp.dataset.f] = inp.value; saveData();
+          DATA.programs[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.programs.splice(i, 1); saveData(); draw(); toast("Program removed.");
+          DATA.programs.splice(i, 1); markDirty(); draw(); toast("Program removed — click \"Save Changes\" to publish.");
         });
       });
     }
     draw();
     root.querySelector("#addProg").addEventListener("click", () => {
       DATA.programs.push({ id: uid(), icon: "📘", title: "New Program", desc: "Description here." });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -497,7 +560,7 @@
         const id = b.closest("[data-id]").dataset.id;
         if (confirm("Delete this event?")) {
           DATA.events = DATA.events.filter(e => e.id !== id);
-          saveData(); draw(); toast("Event deleted.");
+          markDirty(); draw(); toast("Event deleted — click \"Save Changes\" to publish.");
         }
       }));
     }
@@ -632,9 +695,9 @@
       } else {
         DATA.events.push(updated);
       }
-      saveData();
+      markDirty();
       overlay.remove();
-      toast(existing ? "Event updated." : "Event added.");
+      toast((existing ? "Event updated" : "Event added") + " — click \"Save Changes\" to publish.");
       if (onDone) onDone();
     });
   }
@@ -670,7 +733,7 @@
       root.querySelectorAll("#teamList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("input[data-f]").forEach(inp => inp.addEventListener("input", () => {
-          DATA.team[i][inp.dataset.f] = inp.value; saveData();
+          DATA.team[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-photo]").addEventListener("change", (e) => {
           const file = e.target.files[0];
@@ -678,24 +741,25 @@
           toast("Processing photo…");
           compressImage(file).then((url) => {
             DATA.team[i].photo = url;
-            saveData().then((ok) => toast(ok === false ? "Saved locally, but couldn't reach Firestore — check your connection." : "Photo updated."));
+            markDirty(); draw();
+            toast("Photo added — click \"Save Changes\" to publish.");
           }).catch(() => toast("Couldn't process that image — try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.team.splice(i, 1); saveData(); draw(); toast("Team member removed.");
+          DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed — click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
-          if (i > 0) { [DATA.team[i - 1], DATA.team[i]] = [DATA.team[i], DATA.team[i - 1]]; saveData(); draw(); }
+          if (i > 0) { [DATA.team[i - 1], DATA.team[i]] = [DATA.team[i], DATA.team[i - 1]]; markDirty(); draw(); }
         });
         card.querySelector("[data-down]").addEventListener("click", () => {
-          if (i < DATA.team.length - 1) { [DATA.team[i + 1], DATA.team[i]] = [DATA.team[i], DATA.team[i + 1]]; saveData(); draw(); }
+          if (i < DATA.team.length - 1) { [DATA.team[i + 1], DATA.team[i]] = [DATA.team[i], DATA.team[i + 1]]; markDirty(); draw(); }
         });
       });
     }
     draw();
     root.querySelector("#addMember").addEventListener("click", () => {
       DATA.team.push({ id: uid(), name: "New Member", role: "Role", desc: "Description here.", photo: "", ig: "#", linkedin: "#" });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -722,7 +786,7 @@
       root.querySelectorAll("#testiList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
-          DATA.testimonials[i][inp.dataset.f] = inp.value; saveData();
+          DATA.testimonials[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-photo]").addEventListener("change", (e) => {
           const file = e.target.files[0];
@@ -730,18 +794,19 @@
           toast("Processing photo…");
           compressImage(file).then((url) => {
             DATA.testimonials[i].photo = url;
-            saveData().then((ok) => toast(ok === false ? "Saved locally, but couldn't reach Firestore — check your connection." : "Photo updated."));
+            markDirty(); draw();
+            toast("Photo added — click \"Save Changes\" to publish.");
           }).catch(() => toast("Couldn't process that image — try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.testimonials.splice(i, 1); saveData(); draw(); toast("Testimonial removed.");
+          DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed — click \"Save Changes\" to publish.");
         });
       });
     }
     draw();
     root.querySelector("#addTesti").addEventListener("click", () => {
       DATA.testimonials.push({ id: uid(), name: "New Student", school: "School Name", review: "Review text.", photo: "" });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -768,7 +833,7 @@
       root.querySelectorAll("#galList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelector("[data-f]").addEventListener("input", (e) => {
-          DATA.gallery[i].caption = e.target.value; saveData();
+          DATA.gallery[i].caption = e.target.value; markDirty();
         });
         card.querySelector("[data-photo]").addEventListener("change", (e) => {
           const file = e.target.files[0];
@@ -776,24 +841,25 @@
           toast("Processing image…");
           compressImage(file, 640, 0.75).then((url) => {
             DATA.gallery[i].img = url;
-            saveData().then((ok) => toast(ok === false ? "Saved locally, but couldn't reach Firestore — check your connection." : "Image updated."));
+            markDirty(); draw();
+            toast("Image added — click \"Save Changes\" to publish.");
           }).catch(() => toast("Couldn't process that image — try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.gallery.splice(i, 1); saveData(); draw(); toast("Image removed.");
+          DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed — click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
-          if (i > 0) { [DATA.gallery[i - 1], DATA.gallery[i]] = [DATA.gallery[i], DATA.gallery[i - 1]]; saveData(); draw(); }
+          if (i > 0) { [DATA.gallery[i - 1], DATA.gallery[i]] = [DATA.gallery[i], DATA.gallery[i - 1]]; markDirty(); draw(); }
         });
         card.querySelector("[data-down]").addEventListener("click", () => {
-          if (i < DATA.gallery.length - 1) { [DATA.gallery[i + 1], DATA.gallery[i]] = [DATA.gallery[i], DATA.gallery[i + 1]]; saveData(); draw(); }
+          if (i < DATA.gallery.length - 1) { [DATA.gallery[i + 1], DATA.gallery[i]] = [DATA.gallery[i], DATA.gallery[i + 1]]; markDirty(); draw(); }
         });
       });
     }
     draw();
     root.querySelector("#addGal").addEventListener("click", () => {
       DATA.gallery.push({ id: uid(), img: "", caption: "New photo" });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -847,15 +913,15 @@
       root.querySelectorAll("#partList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
-          DATA.partners[i][inp.dataset.f] = inp.value; saveData();
+          DATA.partners[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelectorAll("[data-frame]").forEach(radio => radio.addEventListener("change", (e) => {
           if (!e.target.checked) return;
           DATA.partners[i].frameShape = e.target.value;
-          saveData(); draw();
+          markDirty(); draw();
         }));
         card.querySelector("[data-show-btn]").addEventListener("change", (e) => {
-          DATA.partners[i].showButton = e.target.checked; saveData();
+          DATA.partners[i].showButton = e.target.checked; markDirty();
         });
         card.querySelector("[data-photo]").addEventListener("change", (e) => {
           const file = e.target.files[0];
@@ -863,18 +929,19 @@
           toast("Processing logo…");
           compressImage(file, 320, 0.8).then((url) => {
             DATA.partners[i].logo = url;
-            saveData().then((ok) => toast(ok === false ? "Saved locally, but couldn't reach Firestore — check your connection." : "Logo updated."));
+            markDirty(); draw();
+            toast("Logo added — click \"Save Changes\" to publish.");
             draw();
           }).catch(() => toast("Couldn't process that image — try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.partners.splice(i, 1); saveData(); draw(); toast("Partner removed.");
+          DATA.partners.splice(i, 1); markDirty(); draw(); toast("Partner removed — click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
-          if (i > 0) { [DATA.partners[i - 1], DATA.partners[i]] = [DATA.partners[i], DATA.partners[i - 1]]; saveData(); draw(); }
+          if (i > 0) { [DATA.partners[i - 1], DATA.partners[i]] = [DATA.partners[i], DATA.partners[i - 1]]; markDirty(); draw(); }
         });
         card.querySelector("[data-down]").addEventListener("click", () => {
-          if (i < DATA.partners.length - 1) { [DATA.partners[i + 1], DATA.partners[i]] = [DATA.partners[i], DATA.partners[i + 1]]; saveData(); draw(); }
+          if (i < DATA.partners.length - 1) { [DATA.partners[i + 1], DATA.partners[i]] = [DATA.partners[i], DATA.partners[i + 1]]; markDirty(); draw(); }
         });
       });
     }
@@ -884,7 +951,7 @@
         id: uid(), name: "New Partner", url: "#", logo: "",
         description: "", description_id: "", frameShape: "square", showButton: true
       });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -908,17 +975,17 @@
       root.querySelectorAll("#faqList .admin-item-card").forEach(card => {
         const i = Number(card.dataset.i);
         card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
-          DATA.faq[i][inp.dataset.f] = inp.value; saveData();
+          DATA.faq[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.faq.splice(i, 1); saveData(); draw(); toast("Question removed.");
+          DATA.faq.splice(i, 1); markDirty(); draw(); toast("Question removed — click \"Save Changes\" to publish.");
         });
       });
     }
     draw();
     root.querySelector("#addFaq").addEventListener("click", () => {
       DATA.faq.push({ id: uid(), q: "New question?", a: "Answer here." });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -959,15 +1026,15 @@
         const item = DATA.news.find(x => String(x.id) === String(id));
         if (!item) return;
         card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
-          item[inp.dataset.f] = inp.value; saveData();
+          item[inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-pub]").addEventListener("change", (e) => {
-          item.published = e.target.checked; saveData();
+          item.published = e.target.checked; markDirty();
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           if (!confirm("Remove this post?")) return;
           DATA.news = DATA.news.filter(x => String(x.id) !== String(id));
-          saveData(); draw(); toast("Post removed.");
+          markDirty(); draw(); toast("Post removed — click \"Save Changes\" to publish.");
         });
       });
     }
@@ -976,7 +1043,7 @@
       const today = new Date();
       const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
       DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", published: true, title_id: "", body_id: "" });
-      saveData(); draw();
+      markDirty(); draw();
     });
   }
 
@@ -1227,20 +1294,18 @@
         <div class="field-group"><label>Privacy Policy URL</label><input id="fPrivacy" value="${esc(DATA.footer.privacyUrl)}"></div>
         <div class="field-group"><label>Terms URL</label><input id="fTerms" value="${esc(DATA.footer.termsUrl)}"></div>
       </div>
-      <button class="btn btn-primary" id="saveContact">Save Changes</button>
     `;
-    root.querySelector("#saveContact").addEventListener("click", () => {
-      DATA.contact.intro = root.querySelector("#cIntro").value;
-      DATA.contact.email = root.querySelector("#cEmail").value;
-      DATA.contact.location = root.querySelector("#cLocation").value;
-      DATA.contact.instagram = root.querySelector("#cIg").value;
-      DATA.contact.tiktok = root.querySelector("#cTt").value;
-      DATA.contact.discord = root.querySelector("#cDc").value;
-      DATA.footer.privacyUrl = root.querySelector("#fPrivacy").value;
-      DATA.footer.termsUrl = root.querySelector("#fTerms").value;
-      saveData();
-      toast("Contact info saved.");
-    });
+    const bind = (id, apply) => {
+      root.querySelector(id).addEventListener("input", (e) => { apply(e.target.value); markDirty(); });
+    };
+    bind("#cIntro", (v) => { DATA.contact.intro = v; });
+    bind("#cEmail", (v) => { DATA.contact.email = v; });
+    bind("#cLocation", (v) => { DATA.contact.location = v; });
+    bind("#cIg", (v) => { DATA.contact.instagram = v; });
+    bind("#cTt", (v) => { DATA.contact.tiktok = v; });
+    bind("#cDc", (v) => { DATA.contact.discord = v; });
+    bind("#fPrivacy", (v) => { DATA.footer.privacyUrl = v; });
+    bind("#fTerms", (v) => { DATA.footer.termsUrl = v; });
   }
 
   /* ---- Theme panel ---- */
@@ -1248,7 +1313,7 @@
     const t = DATA.theme;
     root.innerHTML = `
       <h2>Theme Settings</h2>
-      <p class="panel-hint">Changes apply live across the public site.</p>
+      <p class="panel-hint">Applies across the public site once you click "Save Changes".</p>
       <div class="field-row">
         <div class="field-group"><label>Primary Color</label><input type="color" id="tPrimary" value="${t.primary}"></div>
         <div class="field-group"><label>Secondary Color</label><input type="color" id="tSecondary" value="${t.secondary}"></div>
@@ -1283,13 +1348,13 @@
       DATA.theme.darkMode = root.querySelector("#tDark").checked;
       root.querySelector("#radiusVal").textContent = DATA.theme.radius + "px";
       root.querySelector("#speedVal").textContent = DATA.theme.animSpeed + "x";
-      saveData();
+      markDirty();
     }
     root.querySelectorAll("input, select").forEach(el => el.addEventListener("input", update));
     root.querySelector("#resetTheme").addEventListener("click", () => {
       DATA.theme = window.JESSData.defaultData().theme;
-      saveData(); panelTheme(root);
-      toast("Theme reset.");
+      markDirty(); panelTheme(root);
+      toast("Theme reset — click \"Save Changes\" to publish it.");
     });
   }
 
@@ -1297,7 +1362,7 @@
   function panelData(root) {
     root.innerHTML = `
       <h2>Data</h2>
-      <p class="panel-hint">Export your site content as a JSON backup, restore from a backup, or reset everything to defaults.</p>
+      <p class="panel-hint">Export your site content as a JSON backup, restore from a backup, or reset everything to defaults. Import and Reset still require clicking "Save Changes" afterward to actually publish them.</p>
       <div class="data-actions">
         <button class="btn btn-primary" id="exportBtn">Export Website Data</button>
         <button class="btn btn-outline" id="importBtn">Import Website Data</button>
@@ -1322,9 +1387,9 @@
         try {
           const parsed = JSON.parse(reader.result);
           DATA = Object.assign(window.JESSData.defaultData(), parsed);
-          saveData();
+          markDirty();
           renderAdminPanel("data");
-          toast("Data imported successfully.");
+          toast("Data imported — click \"Save Changes\" to publish it.");
         } catch (err) {
           alert("Invalid JSON file.");
         }
@@ -1332,11 +1397,11 @@
       reader.readAsText(file);
     });
     root.querySelector("#resetBtn").addEventListener("click", () => {
-      if (confirm("This will erase all edits and restore default content. Continue?")) {
+      if (confirm("This will erase all edits and restore default content once you save. Continue?")) {
         DATA = window.JESSData.defaultData();
-        saveData();
+        markDirty();
         renderAdminPanel("data");
-        toast("Website reset to defaults.");
+        toast("Reset locally — click \"Save Changes\" to publish it.");
       }
     });
   }
