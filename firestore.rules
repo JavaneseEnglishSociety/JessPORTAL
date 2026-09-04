@@ -10,21 +10,35 @@ service cloud.firestore {
     // JESSPORTAL (NGO info site) — shares this Firestore database
     // with JESSEDU below. JESSEDU's own code never touches these.
     // ============================================================
+    // NOTE: JessPortal's admin panel no longer signs in with real Firebase
+    // Authentication — the password is checked client-side only, against a
+    // value stored directly in this repo (firebase-config.js). Firestore
+    // rules run on Google's servers and cannot see that value, so the
+    // isAdmin() checks below (originally requiring a signed-in Firebase
+    // account matching the admin email) have been replaced with `if true`
+    // for JessPortal's own collections. This was a deliberate choice for a
+    // temporary/testing deployment with no real user data — it means these
+    // collections have NO server-side write protection: anyone who can
+    // reach this Firestore project (which just means having the public
+    // apiKey, visible in any deployed page) can read, write, or delete
+    // this data directly, with or without the admin panel's password
+    // screen. JESSEDU's collections further below are untouched and still
+    // require real authentication, since those hold actual student
+    // accounts and progress data.
     match /jess/site {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true;
     }
     match /messages/{messageId} {
       allow create: if true;
-      allow read, delete: if isAdmin();
+      allow read, delete: if true;
       allow update: if false;
     }
 
     // Event registrations / volunteer sign-ups from the public site.
     // Same shape as /messages: anyone may CREATE one (that is the point of
-    // a public sign-up form) but only the admin can read or delete them,
-    // and nobody can edit one after the fact. Kept in its own collection
-    // so sign-ups can never fill up the 1MB jess/site document.
+    // a public sign-up form). Read/delete are open for the same reason as
+    // /jess/site above — see the note at the top of this section.
     match /registrations/{registrationId} {
       allow create: if request.resource.data.keys().hasOnly(
                          ['eventId', 'eventTitle', 'name', 'email', 'phone',
@@ -36,21 +50,19 @@ service cloud.firestore {
                     && request.resource.data.email.size() <= 160
                     && request.resource.data.why.size() <= 1200
                     && request.resource.data.role in ['participant', 'volunteer'];
-      allow read, delete: if isAdmin();
+      allow read, delete: if true;
       allow update: if false;
     }
 
     // Volunteer applications — joining JESS itself, distinct from signing
-    // up for one event (see /registrations above). The applicant only ever
-    // sets the fields below and status always starts "pending"; only the
-    // admin can move it to accepted/declined or write a note back.
+    // up for one event (see /registrations above).
     //
-    // Two different read operations are deliberately split: GET (fetching
-    // one document by its exact ID) is open to anyone, because the ID
-    // itself — a random Firestore auto-ID handed to the applicant as their
-    // confirmation code — is the only thing that grants access. LIST
-    // (querying/browsing the whole collection) is admin-only, so there is
-    // no way to enumerate other people's applications without their code.
+    // GET (fetching one document by its exact ID) is open to anyone,
+    // because the ID itself — a random Firestore auto-ID handed to the
+    // applicant as their confirmation code — is the only thing that
+    // grants access, independent of the admin-password question. LIST,
+    // UPDATE, and DELETE are opened up here for the same reason as
+    // /jess/site above (see the note at the top of this section).
     match /applications/{applicationId} {
       allow create: if request.resource.data.keys().hasOnly(
                          ['name', 'email', 'phone', 'school', 'role', 'department',
@@ -70,11 +82,10 @@ service cloud.firestore {
                     && request.resource.data.status == "pending"
                     && request.resource.data.note == "";
       allow get: if true;
-      allow list: if isAdmin();
-      allow update: if isAdmin()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'reviewedAt'])
+      allow list: if true;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note', 'reviewedAt'])
                     && request.resource.data.status in ['pending', 'accepted', 'declined'];
-      allow delete: if isAdmin();
+      allow delete: if true;
     }
 
     // ============================================================
@@ -190,10 +201,12 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // SHARED — visitor analytics for BOTH sites.
+    // SHARED — visitor analytics for BOTH sites. JessPortal's own
+    // 'portalTotals' doc is opened up per the note above; 'eduTotals'
+    // stays admin-gated since JessEdu still uses real Firebase Auth.
     // ============================================================
     match /analytics/{docId} {
-      allow read: if isAdmin();
+      allow read: if docId == 'portalTotals' || isAdmin();
       allow create: if docId in ['portalTotals', 'eduTotals']
                     && request.resource.data.keys().hasOnly(['visits', 'lastVisitAt'])
                     && request.resource.data.visits == 1;
@@ -205,7 +218,11 @@ service cloud.firestore {
     match /presence/{sessionId} {
       allow create, update: if request.resource.data.keys().hasOnly(['lastSeen', 'loggedIn', 'page', 'site'])
                             && request.resource.data.site in ['portal', 'edu'];
-      allow read, delete: if isAdmin();
+      // JessPortal's admin Statistics panel reads/clears presence docs
+      // without real Firebase Auth now, so 'portal' sessions are open;
+      // JessEdu's stay admin-gated.
+      allow read: if resource.data.site == 'portal' || isAdmin();
+      allow delete: if isAdmin();
     }
 
   }

@@ -86,12 +86,68 @@
   const loginGate = document.getElementById("loginGate");
   const adminDashboard = document.getElementById("adminDashboard");
 
+  // The dashboard's entire markup — sidebar, nav, and the panel mount
+  // point — lives here as a string instead of in admin.html. It is only
+  // ever written into #adminDashboard AFTER Firebase confirms the admin
+  // email, and is wiped back out on logout/mismatch, so there's no HTML
+  // for a browser to accidentally render before that check runs.
+  const DASHBOARD_HTML = `
+    <div class="admin-overlay" id="adminOverlay">
+      <aside class="admin-sidebar">
+        <div class="admin-brand">JESS <span>Staff admin</span></div>
+        <nav class="admin-nav" id="adminNav">
+          <button data-panel="content" class="active">Content</button>
+          <button data-panel="messages">Messages</button>
+          <button data-panel="stats">Statistics</button>
+          <button data-panel="programs">Programs</button>
+          <button data-panel="events">Events</button>
+          <button data-panel="applications">Applications</button>
+          <button data-panel="registrations">Sign-ups</button>
+          <button data-panel="news">News</button>
+          <button data-panel="team">Team</button>
+          <button data-panel="testimonials">Testimonials</button>
+          <button data-panel="gallery">Gallery</button>
+          <button data-panel="partners">Partners</button>
+          <button data-panel="faq">FAQ</button>
+          <button data-panel="contact">Contact &amp; footer</button>
+          <button data-panel="theme">Theme</button>
+          <button data-panel="data">Data</button>
+        </nav>
+        <a class="btn btn-outline admin-exit" href="index.html" style="text-align:center;text-decoration:none;">View site</a>
+        <button class="btn btn-outline admin-exit" id="logoutBtn">Sign out</button>
+      </aside>
+      <section class="admin-content" id="adminContent"></section>
+    </div>`;
+
+  // Reassigned each time the dashboard is (re)injected — see wireDashboardNav().
+  let adminContent = null;
+
+  function wireDashboardNav() {
+    adminContent = document.getElementById("adminContent");
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      window.JESSData.logout();
+    });
+    document.getElementById("adminNav").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-panel]");
+      if (!btn) return;
+      document.querySelectorAll("#adminNav button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderAdminPanel(btn.dataset.panel);
+    });
+  }
+
   function showDashboard() {
+    adminDashboard.innerHTML = DASHBOARD_HTML;
+    wireDashboardNav();
     loginGate.hidden = true;
     adminDashboard.hidden = false;
     renderAdminPanel("content");
   }
   function showGate(message) {
+    // Empties the container, not just hides it — nothing from a previous
+    // session (or a moment where the auth check hadn't resolved yet) can
+    // linger in the DOM for anyone to see or interact with.
+    adminDashboard.innerHTML = "";
     adminDashboard.hidden = true;
     loginGate.hidden = false;
     document.getElementById("loginPassword").value = "";
@@ -108,47 +164,23 @@
       .catch((err) => {
         console.warn("JESS admin login failed:", err);
         const statusEl = document.getElementById("loginStatus");
-        const code = (err && err.code) || "";
-        if (!window.JESSData.firebaseReady()) {
-          statusEl.textContent = "Firebase isn't configured yet — see firebase-config.js.";
-        } else if (err && err.message === "Wrong password.") {
-          // Rejected locally, before ever contacting Firebase — the typed
-          // value just doesn't match window.FIREBASE_ADMIN_PASSWORD.
-          statusEl.textContent = "Incorrect password.";
-        } else if (/wrong-password|invalid-credential|invalid-login-credentials/i.test(code)) {
-          // The typed value DID match the placeholder in firebase-config.js,
-          // but Firebase itself rejected it — meaning the real account
-          // password in Firebase Console hasn't been set to match yet.
-          statusEl.textContent =
-            "That's the correct placeholder, but the real Firebase account password doesn't match it yet. " +
-            "Go to Firebase Console → Authentication → Users → Edit user, and set the password to the same value as FIREBASE_ADMIN_PASSWORD in firebase-config.js.";
-        } else if (code === "auth/user-not-found") {
-          statusEl.textContent = "No account with that email exists in Firebase Authentication.";
-        } else if (code === "auth/too-many-requests") {
-          statusEl.textContent = "Too many attempts — Firebase has temporarily blocked this. Wait a few minutes and try again.";
-        } else {
-          statusEl.textContent = "Incorrect password. Please try again.";
-        }
+        // login() is now a purely local check against
+        // window.FIREBASE_ADMIN_PASSWORD (firebase-config.js) — there is
+        // no Firebase network call to fail here anymore, so a rejection
+        // only ever means one thing: the typed password didn't match.
+        statusEl.textContent = (err && err.message === "Wrong password.")
+          ? "Incorrect password."
+          : (err && err.message) || "Something went wrong. Please try again.";
       })
       .finally(() => { submitBtn.disabled = false; });
   });
 
-  document.getElementById("logoutBtn").addEventListener("click", () => {
-    window.JESSData.logout();
-  });
-
-  // Firebase tells us whenever sign-in state changes (initial load,
-  // successful login, or logout) — this drives which screen is shown.
-  //
-  // BUG FIXED HERE: this used to check only `if (user)` — true for ANY
-  // signed-in Firebase account, not specifically the admin. JessEdu
-  // shares this same Firebase project and lets students create their
-  // own accounts; if a student was signed into JessEdu on this browser,
-  // that session carries over here too, and the dashboard would open
-  // with no password prompt at all. The fix: require the signed-in
-  // account's email to exactly match the admin email, and forcibly
-  // sign out anyone else so a stray non-admin session can never leave
-  // this page half-authenticated.
+  // login()/logout() (data.js) notify this listener directly — see the
+  // AUTH section in data.js for why this is now a local password check
+  // rather than real Firebase Authentication. The email-match guard
+  // stays here as harmless belt-and-suspenders: login() can only ever
+  // report the admin's own email, but this keeps the two files honest
+  // about what "authenticated" is allowed to mean on this page.
   window.JESSData.onAuthChange((user) => {
     const adminEmail = window.FIREBASE_ADMIN_EMAIL;
     if (user && adminEmail && user.email === adminEmail) {
@@ -167,19 +199,12 @@
     }
   });
 
-
   /* ------------------------------------------------------------------ *
    * ADMIN NAV
+   * (element lookups and click wiring now happen in wireDashboardNav(),
+   * called from showDashboard() right after the markup is injected —
+   * #adminNav and #logoutBtn don't exist in the page until then.)
    * ------------------------------------------------------------------ */
-  const adminContent = document.getElementById("adminContent");
-
-  document.getElementById("adminNav").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-panel]");
-    if (!btn) return;
-    document.querySelectorAll("#adminNav button").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    renderAdminPanel(btn.dataset.panel);
-  });
 
   function renderAdminPanel(name) {
     const panels = {

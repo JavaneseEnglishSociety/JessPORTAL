@@ -674,31 +674,48 @@ async function deleteApplication(id) {
 
 /* ------------------------------------------------------------------ *
  * AUTH (admin portal login/logout)
+ *
+ * This is now a purely LOCAL password check — it never calls Firebase
+ * Authentication at all. `isAdminUnlocked` lives only in this tab's
+ * memory: true after a correct password, reset to false on logout or
+ * page reload. There is no session, no token, nothing persisted.
+ *
+ * This only works at all because firestore.rules was changed to stop
+ * requiring a signed-in Firebase account for JessPortal's collections
+ * (jess/site, messages, registrations, applications, portalTotals,
+ * portal presence) — Firestore's rules run server-side and can't see
+ * this password, so removing the real auth check there is what makes
+ * a repo-local password meaningful again instead of a UI dead end.
+ * The real-world effect: those collections now have no server-side
+ * write protection at all, for anyone, regardless of this password.
  * ------------------------------------------------------------------ */
+let isAdminUnlocked = false;
+const authListeners = [];
+
 function login(password) {
-  if (!firebaseReady) return Promise.reject(new Error("Firebase is not configured yet."));
-  const email = window.FIREBASE_ADMIN_EMAIL || "staff@jess.internal";
-  // Compares against the placeholder stored in firebase-config.js before
-  // ever contacting Firebase, so a wrong guess fails fast with a normal
-  // "incorrect password" message instead of a network round trip. The
-  // Firebase call still happens afterward and is still the real check —
-  // this constant has to match the actual Firebase account password for
-  // sign-in to succeed at all.
   const expected = window.FIREBASE_ADMIN_PASSWORD;
-  if (expected && password !== expected) {
-    return Promise.reject(new Error("Wrong password."));
-  }
-  return authFns.signInWithEmailAndPassword(auth, email, password);
+  if (!expected) return Promise.reject(new Error("No admin password is configured (firebase-config.js)."));
+  if (password !== expected) return Promise.reject(new Error("Wrong password."));
+  isAdminUnlocked = true;
+  authListeners.forEach((cb) => cb({ email: window.FIREBASE_ADMIN_EMAIL || "admin" }));
+  return Promise.resolve();
 }
 
 function logout() {
-  if (!firebaseReady) return Promise.resolve();
-  return authFns.signOut(auth);
+  isAdminUnlocked = false;
+  authListeners.forEach((cb) => cb(null));
+  return Promise.resolve();
 }
 
 function onAuthChange(cb) {
-  if (!firebaseReady) { cb(null); return () => {}; }
-  return authFns.onAuthStateChanged(auth, cb);
+  authListeners.push(cb);
+  // Fire once immediately with the current state, matching how Firebase's
+  // own onAuthStateChanged reports the existing session right away.
+  cb(isAdminUnlocked ? { email: window.FIREBASE_ADMIN_EMAIL || "admin" } : null);
+  return () => {
+    const i = authListeners.indexOf(cb);
+    if (i !== -1) authListeners.splice(i, 1);
+  };
 }
 
 /* ------------------------------------------------------------------ *
