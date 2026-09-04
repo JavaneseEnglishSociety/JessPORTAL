@@ -22,6 +22,46 @@ function rawDefaultData() {
   const m = now.getMonth();
 
   return {
+    aboutPoints: [
+      { id: uid(), icon: "book", title: "Free for every student", desc: "Every class, every material, every session costs students nothing. It always will." },
+      { id: uid(), icon: "chat", title: "Speaking before grammar", desc: "Fluency grows through conversation, not memorisation. Students talk from day one." },
+      { id: uid(), icon: "people", title: "Students become teachers", desc: "Our volunteers are teenagers who trained with us, then stayed to teach the next class." },
+      { id: uid(), icon: "globe", title: "Open across Java", desc: "We run fully online, so a student in any town joins the same class as everyone else." }
+    ],
+    volunteerSteps: [
+      { id: uid(), title: "Send us a message", desc: "Use the contact form below and tell us a little about yourself." },
+      { id: uid(), title: "Have a short chat", desc: "An informal conversation so we can hear how you speak and what you would like to teach." },
+      { id: uid(), title: "Join teacher training", desc: "A short orientation covering lesson structure, classroom confidence, and our materials." },
+      { id: uid(), title: "Take your first class", desc: "You will co-teach with an experienced volunteer before leading on your own." }
+    ],
+    sectionText: {
+      about_marker: "About JESS", about_marker_id: "",
+      about_heading: "Peer teaching, at the scale of a movement.", about_heading_id: "",
+      vision_marker: "Our vision", vision_marker_id: "",
+      vision_heading: "Where we are going", vision_heading_id: "",
+      mission_marker: "Our mission", mission_marker_id: "",
+      mission_heading: "How we get there", mission_heading_id: "",
+      programs_marker: "Programs", programs_marker_id: "",
+      programs_heading: "What we run.", programs_heading_id: "",
+      events_marker: "Calendar", events_marker_id: "",
+      events_heading: "What is coming up.", events_heading_id: "",
+      team_marker: "The team", team_marker_id: "",
+      team_heading: "Who runs JESS.", team_heading_id: "",
+      volunteer_marker: "Volunteer", volunteer_marker_id: "",
+      volunteer_heading: "Teach the class you wish you had had.", volunteer_heading_id: "",
+      partners_marker: "Partners", partners_marker_id: "",
+      partners_heading: "Schools and organisations we work with.", partners_heading_id: "",
+      news_marker: "News", news_marker_id: "",
+      news_heading: "Latest from JESS.", news_heading_id: "",
+      testimonials_marker: "In their words", testimonials_marker_id: "",
+      testimonials_heading: "What students say.", testimonials_heading_id: "",
+      gallery_marker: "Gallery", gallery_marker_id: "",
+      gallery_heading: "Moments from our classes.", gallery_heading_id: "",
+      faq_marker: "Questions", faq_marker_id: "",
+      faq_heading: "Things people ask us.", faq_heading_id: "",
+      contact_marker: "Contact", contact_marker_id: "",
+      contact_heading: "Get in touch.", contact_heading_id: ""
+    },
     hero: {
       title: "Making English Accessible For Everyone.",
       subtitle: "Free English education, youth empowerment, and a stronger future through peer teaching.",
@@ -76,7 +116,7 @@ function rawDefaultData() {
     testimonials: [
       { id: uid(), name: "Nadia Putri", school: "SMAN 3 Bandung", review: "JESS gave me the confidence to speak English in front of a crowd for the first time.", photo: "" },
       { id: uid(), name: "Rian Hidayat", school: "SMPN 12 Surabaya", review: "My peer teacher made English feel simple and fun instead of scary.", photo: "" },
-      { id: uid(), name: "Aisyah Rahma", school: "SMA Labschool", review: "I joined as a student and now I teach — JESS changed how I see my own potential.", photo: "" }
+      { id: uid(), name: "Aisyah Rahma", school: "SMA Labschool", review: "I joined as a student and now I teach. JESS changed how I see my own potential.", photo: "" }
     ],
     gallery: [
       { id: uid(), img: "", caption: "Weekly conversation club" },
@@ -85,15 +125,15 @@ function rawDefaultData() {
       { id: uid(), img: "", caption: "Community English fair" }
     ],
     faq: [
-      { id: uid(), q: "Is JESS really free for students?", a: "Yes — every class, material, and event JESS runs is completely free for students." },
+      { id: uid(), q: "Is JESS really free for students?", a: "Yes, every class, material, and event JESS runs is completely free for students." },
       { id: uid(), q: "Who can become a volunteer teacher?", a: "Qualified middle and high school students who pass our teacher training program can lead classes through peer teaching." },
       { id: uid(), q: "Where does JESS operate?", a: "JESS operates fully online, with students and volunteer teachers joining from across Java and beyond." },
-      { id: uid(), q: "How do I enroll as a student?", a: "Fill out the contact form below or reach out through our Instagram — we'll guide you through enrollment." }
+      { id: uid(), q: "How do I enroll as a student?", a: "Fill out the contact form below or reach out through our Instagram, and we'll guide you through enrollment." }
     ],
     contact: {
-      intro: "Questions, partnership ideas, or ready to volunteer? Send us a message — we reply within a few days.",
+      intro: "Questions, partnership ideas, or ready to volunteer? Send us a message. We reply within a few days.",
       email: "hello@jess-english.org",
-      location: "Fully online — Java, Indonesia",
+      location: "Fully online, Java, Indonesia",
       instagram: "#",
       tiktok: "#",
       discord: "#"
@@ -172,6 +212,7 @@ function normalizeData(data) {
     title: n.title || "",
     date: n.date || "",
     body: n.body || "",
+    image: n.image || "",
     published: n.published !== false,
     title_id: n.title_id || "",
     body_id: n.body_id || ""
@@ -196,17 +237,35 @@ function normalizeData(data) {
   }));
   d.faq = d.faq.map((f) => ({ ...f, q_id: f.q_id || "", a_id: f.a_id || "" }));
 
-  // Partners gained a description, a logo frame shape, and a choice of
-  // whether to show a "Visit website" button — older saved partners had
-  // none of this, so fill in sensible defaults without touching name,
-  // url, or logo, which are already there.
+  // Partners gained a description, a logo frame shape, a choice of
+  // whether to show a "Visit website" button, and crop controls so a
+  // logo can be repositioned and zoomed to actually fill the frame
+  // instead of floating inside it with padding.
   d.partners = d.partners.map((p) => ({
     ...p,
     description: p.description || "",
     description_id: p.description_id || "",
     frameShape: p.frameShape === "circle" ? "circle" : "square",
-    showButton: p.showButton !== false
+    showButton: p.showButton !== false,
+    logoZoom: (typeof p.logoZoom === "number" && p.logoZoom >= 1) ? p.logoZoom : 1,
+    logoPosX: (typeof p.logoPosX === "number") ? p.logoPosX : 50,
+    logoPosY: (typeof p.logoPosY === "number") ? p.logoPosY : 50
   }));
+
+  // Older saved documents predate these sections entirely; fall back to
+  // a fresh default set rather than leaving them undefined.
+  if (!Array.isArray(d.aboutPoints) || !d.aboutPoints.length) d.aboutPoints = rawDefaultData().aboutPoints;
+  if (!Array.isArray(d.volunteerSteps) || !d.volunteerSteps.length) d.volunteerSteps = rawDefaultData().volunteerSteps;
+  d.aboutPoints = d.aboutPoints.map((a) => ({
+    id: a.id || uid(), icon: a.icon || "book", title: a.title || "", desc: a.desc || "",
+    title_id: a.title_id || "", desc_id: a.desc_id || ""
+  }));
+  d.volunteerSteps = d.volunteerSteps.map((v) => ({
+    id: v.id || uid(), title: v.title || "", desc: v.desc || "",
+    title_id: v.title_id || "", desc_id: v.desc_id || ""
+  }));
+  const defaultSectionText = rawDefaultData().sectionText;
+  d.sectionText = Object.assign({}, defaultSectionText, d.sectionText || {});
 
   return d;
 }
@@ -384,7 +443,7 @@ const UI_STRINGS = {
     participant: "Participant", volunteer: "Volunteer",
     why_join: "Why do you want to join?", send: "Send", sending: "Sending…",
     reg_ok: "You're registered. We'll be in touch by email.",
-    reg_fail: "Couldn't send that — please check your connection and try again.",
+    reg_fail: "Couldn't send that. Please check your connection and try again.",
     required_fields: "Please fill in your name and email.",
     days: "Days", hrs: "Hrs", min: "Min", live: "Live",
     read_more: "Read more", close: "Close",
@@ -392,14 +451,14 @@ const UI_STRINGS = {
     staff_login: "Staff login", privacy: "Privacy", terms: "Terms",
     form_name: "Your name", form_email: "Email", form_message: "Message",
     form_send: "Send message",
-    apply_to_volunteer: "Apply to volunteer", check_status: "Check application status",
+    apply_to_volunteer: "Apply to volunteer", apply_as_student: "Apply as a Student", check_status: "Check application status",
     apply_intro: "Tell us a bit about yourself. We'll review it and let you know.",
     school: "School", volunteer_teacher: "Volunteer as a member", student_join: "Join as a student",
     availability: "When are you available?", availability_ph: "e.g. weekday evenings, weekends",
     department: "Department", department_ph: "Select a department",
     dept_academics: "Academics", dept_media: "Media and Marketing",
     dept_pr: "Public Relations", dept_internal: "Internal Management",
-    apply_ok_title: "Application received", apply_ok_body: "Save this code — it's the only way to check your status later.",
+    apply_ok_title: "Application received", apply_ok_body: "Save this code. It is the only way to check your status later.",
     apply_ok_hint: "We'll review your application and update your status here. If you're accepted, check your email for next steps.",
     copy_code: "Copy code", copied: "Copied!",
     check_status_hint: "Enter the confirmation code you received when you applied.",
@@ -436,7 +495,7 @@ const UI_STRINGS = {
     participant: "Peserta", volunteer: "Relawan",
     why_join: "Mengapa kamu ingin bergabung?", send: "Kirim", sending: "Mengirim…",
     reg_ok: "Pendaftaran berhasil. Kami akan menghubungi lewat email.",
-    reg_fail: "Gagal mengirim — periksa koneksi lalu coba lagi.",
+    reg_fail: "Gagal mengirim, periksa koneksi lalu coba lagi.",
     required_fields: "Mohon isi nama dan email kamu.",
     days: "Hari", hrs: "Jam", min: "Mnt", live: "Berlangsung",
     read_more: "Selengkapnya", close: "Tutup",
@@ -444,14 +503,14 @@ const UI_STRINGS = {
     staff_login: "Masuk pengurus", privacy: "Privasi", terms: "Ketentuan",
     form_name: "Nama kamu", form_email: "Email", form_message: "Pesan",
     form_send: "Kirim pesan",
-    apply_to_volunteer: "Daftar jadi relawan", check_status: "Cek status pendaftaran",
+    apply_to_volunteer: "Daftar jadi relawan", apply_as_student: "Daftar sebagai Siswa", check_status: "Cek status pendaftaran",
     apply_intro: "Ceritakan sedikit tentang dirimu. Kami akan meninjau dan menghubungi kembali.",
     school: "Sekolah", volunteer_teacher: "Menjadi anggota relawan", student_join: "Bergabung sebagai siswa",
     availability: "Kapan kamu tersedia?", availability_ph: "misalnya sore hari kerja, akhir pekan",
     department: "Departemen", department_ph: "Pilih departemen",
     dept_academics: "Akademik", dept_media: "Media dan Pemasaran",
     dept_pr: "Hubungan Masyarakat", dept_internal: "Manajemen Internal",
-    apply_ok_title: "Pendaftaran diterima", apply_ok_body: "Simpan kode ini — ini satu-satunya cara untuk mengecek status kamu nanti.",
+    apply_ok_title: "Pendaftaran diterima", apply_ok_body: "Simpan kode ini. Ini satu-satunya cara untuk mengecek status kamu nanti.",
     apply_ok_hint: "Kami akan meninjau pendaftaranmu dan memperbarui statusnya di sini. Jika diterima, periksa email untuk langkah selanjutnya.",
     copy_code: "Salin kode", copied: "Tersalin!",
     check_status_hint: "Masukkan kode konfirmasi yang kamu terima saat mendaftar.",

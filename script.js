@@ -69,6 +69,42 @@
       .map((m) => `<li>${esc(m)}</li>`).join("");
   }
 
+  // A small, fixed set of icon choices for About points. Admin picks one
+  // by name rather than supplying arbitrary SVG, which keeps the visual
+  // style consistent with the rest of the site.
+  const ICON_PRESETS = {
+    book: '<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/>',
+    chat: '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>',
+    people: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/>',
+    star: '<path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7L2 9.2l7.1-.6Z"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'
+  };
+  function iconSvg(name) {
+    const paths = ICON_PRESETS[name] || ICON_PRESETS.book;
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  }
+
+  function renderAboutPoints() {
+    const grid = document.getElementById("aboutGrid");
+    if (!grid) return;
+    grid.innerHTML = (DATA.aboutPoints || []).map(a => `
+      <div class="about-point fade-in-up visible">
+        <div class="point-icon">${iconSvg(a.icon)}</div>
+        <h3>${esc(field(a, "title"))}</h3>
+        <p>${esc(field(a, "desc"))}</p>
+      </div>`).join("");
+  }
+
+  function renderVolunteerSteps() {
+    const list = document.getElementById("volunteerStepsList");
+    if (!list) return;
+    list.innerHTML = (DATA.volunteerSteps || []).map(v => `
+      <li><strong>${esc(field(v, "title"))}</strong><span>${esc(field(v, "desc"))}</span></li>`).join("");
+  }
+
   function renderStats() {
     document.getElementById("statsGrid").innerHTML = DATA.stats.map(s => `
       <div class="stat-card fade-in-up visible">
@@ -107,13 +143,23 @@
   function renderPartners() {
     document.getElementById("partnersGrid").innerHTML = DATA.partners.map(p => {
       const shape = p.frameShape === "circle" ? "shape-circle" : "shape-square";
+      // Logos render as a CSS background instead of an <img> tag so the
+      // zoom and position an admin sets in the crop tool actually fill
+      // the frame edge to edge, instead of floating inside it at a fixed
+      // size with padding around it.
+      const zoom = p.logoZoom || 1;
+      const posX = (typeof p.logoPosX === "number") ? p.logoPosX : 50;
+      const posY = (typeof p.logoPosY === "number") ? p.logoPosY : 50;
+      const frameStyle = p.logo
+        ? ` style="background-image:url('${esc(p.logo)}');background-size:${(zoom * 100).toFixed(0)}%;background-position:${posX}% ${posY}%;"`
+        : "";
       const frameInner = p.logo
-        ? `<img src="${esc(p.logo)}" alt="${esc(p.name)}">`
+        ? ""
         : `<span class="partner-initials">${esc((p.name || "?").trim().charAt(0).toUpperCase())}</span>`;
       const desc = field(p, "description");
       return `
       <div class="partner-card fade-in-up visible">
-        <div class="partner-frame ${shape}">${frameInner}</div>
+        <div class="partner-frame ${shape}"${frameStyle}>${frameInner}</div>
         <h3 class="partner-name">${esc(p.name)}</h3>
         ${desc ? `<p class="partner-desc">${esc(desc)}</p>` : ""}
         ${p.showButton !== false && p.url
@@ -162,12 +208,15 @@
         : "";
       return `
       <article class="news-card fade-in-up visible">
-        ${dateLabel ? `<div class="news-date">${esc(dateLabel)}</div>` : ""}
-        <h3>${esc(field(n, "title"))}</h3>
-        <p class="news-body">${esc(short)}</p>
-        ${body.length > 180
-          ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(L.t("read_more", lang))}</button>`
-          : ""}
+        ${n.image ? `<div class="news-image"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}" loading="lazy"></div>` : ""}
+        <div class="news-card-body">
+          ${dateLabel ? `<div class="news-date">${esc(dateLabel)}</div>` : ""}
+          <h3>${esc(field(n, "title"))}</h3>
+          <p class="news-body">${esc(short)}</p>
+          ${body.length > 180
+            ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(L.t("read_more", lang))}</button>`
+            : ""}
+        </div>
       </article>`;
     }).join("");
   }
@@ -183,6 +232,7 @@
     overlay.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true">
         <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
+        ${n.image ? `<div class="news-image news-image-modal"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}"></div>` : ""}
         <h3>${esc(field(n, "title"))}</h3>
         ${n.date ? `<p class="news-date">${esc(n.date)}</p>` : ""}
         <p style="white-space:pre-wrap;">${esc(field(n, "body"))}</p>
@@ -231,9 +281,11 @@
 
   function renderAll() {
     renderHero();
+    renderAboutPoints();
     renderMission();
     renderStats();
     renderPrograms();
+    renderVolunteerSteps();
     renderTeam();
     renderPartners();
     renderGallery();
@@ -252,9 +304,34 @@
    * placeholders). Switching language rewrites those, then re-renders the
    * data-driven sections. The choice is stored so it survives a reload.
    * ------------------------------------------------------------------- */
+  // Maps each data-i18n key used for a section marker/heading to the
+  // matching field on DATA.sectionText. When the admin has customised
+  // that field (Content panel > Sections), it wins; otherwise this falls
+  // back to the fixed UI_STRINGS translation exactly as before, so an
+  // untouched site looks identical to how it always did.
+  const SECTION_TEXT_MAP = {
+    marker_about: "about_marker", h_about: "about_heading",
+    marker_vision: "vision_marker", h_vision: "vision_heading",
+    marker_mission: "mission_marker", h_mission: "mission_heading",
+    marker_programs: "programs_marker", h_programs: "programs_heading",
+    marker_calendar: "events_marker", h_events: "events_heading",
+    marker_team: "team_marker", h_team: "team_heading",
+    marker_volunteer: "volunteer_marker", h_volunteer: "volunteer_heading",
+    marker_partners: "partners_marker", h_partners: "partners_heading",
+    marker_news: "news_marker", h_news: "news_heading",
+    marker_testimonials: "testimonials_marker", h_testimonials: "testimonials_heading",
+    marker_gallery: "gallery_marker", h_gallery: "gallery_heading",
+    marker_questions: "faq_marker", h_faq: "faq_heading",
+    marker_contact: "contact_marker", h_contact: "contact_heading"
+  };
+
   function applyStaticStrings() {
     document.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = L.t(el.dataset.i18n, lang);
+      const key = el.dataset.i18n;
+      const sectionField = SECTION_TEXT_MAP[key];
+      el.textContent = (sectionField && DATA.sectionText)
+        ? field(DATA.sectionText, sectionField)
+        : L.t(key, lang);
     });
     document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
       el.setAttribute("placeholder", L.t(el.dataset.i18nPh, lang));
@@ -313,7 +390,7 @@
 
     const index = [];
     DATA.programs.forEach(p => index.push({ type: "Program", label: p.title, target: "#programs" }));
-    DATA.team.forEach(t => index.push({ type: "Team", label: `${t.name} — ${t.role}`, target: "#team" }));
+    DATA.team.forEach(t => index.push({ type: "Team", label: `${t.name}, ${t.role}`, target: "#team" }));
     DATA.events.forEach(e => index.push({ type: "Event", label: `${e.title} (${e.date})`, target: "#events" }));
     DATA.faq.forEach(f => index.push({ type: "FAQ", label: f.q, target: "#faq" }));
     DATA.partners.forEach(p => index.push({ type: "Partner", label: p.name, target: "#partners" }));
@@ -565,13 +642,14 @@
    * the site has no login for applicants and no backend to email them
    * automatically.
    * ------------------------------------------------------------------- */
-  function openApplyModal() {
+  function openApplyModal(presetRole) {
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
+    const titleKey = presetRole === "student" ? "apply_as_student" : "apply_to_volunteer";
     overlay.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(L.t("apply_to_volunteer", lang))}">
+      <div class="modal" role="dialog" aria-modal="true" aria-label="${esc(L.t(titleKey, lang))}">
         <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
-        <h3>${esc(L.t("apply_to_volunteer", lang))}</h3>
+        <h3>${esc(L.t(titleKey, lang))}</h3>
         <p class="panel-hint">${esc(L.t("apply_intro", lang))}</p>
         <form id="applyForm">
           <label for="apName">${esc(L.t("full_name", lang))}</label>
@@ -584,8 +662,8 @@
           <input id="apSchool" autocomplete="organization">
           <label for="apRole">${esc(L.t("role", lang))}</label>
           <select id="apRole">
-            <option value="volunteer">${esc(L.t("volunteer_teacher", lang))}</option>
-            <option value="student">${esc(L.t("student_join", lang))}</option>
+            <option value="volunteer" ${presetRole !== "student" ? "selected" : ""}>${esc(L.t("volunteer_teacher", lang))}</option>
+            <option value="student" ${presetRole === "student" ? "selected" : ""}>${esc(L.t("student_join", lang))}</option>
           </select>
           <div id="apDeptWrap">
             <label for="apDept">${esc(L.t("department", lang))}</label>
@@ -721,7 +799,9 @@
   }
 
   const applyBtn = document.getElementById("openApplyBtn");
-  if (applyBtn) applyBtn.addEventListener("click", openApplyModal);
+  if (applyBtn) applyBtn.addEventListener("click", () => openApplyModal("volunteer"));
+  const applyStudentBtn = document.getElementById("openApplyStudentBtn");
+  if (applyStudentBtn) applyStudentBtn.addEventListener("click", () => openApplyModal("student"));
   const statusBtn = document.getElementById("openStatusBtn");
   if (statusBtn) statusBtn.addEventListener("click", openStatusModal);
 
@@ -837,7 +917,7 @@
     // Simple spam trap: real visitors never fill this hidden field.
     if (form.querySelector("[name=bot-field]").value) {
       form.reset();
-      statusEl.textContent = "Thanks — your message has been sent. We'll reply within a few days.";
+      statusEl.textContent = "Thanks. Your message has been sent. We'll reply within a few days.";
       return;
     }
 
@@ -852,10 +932,10 @@
     })
       .then((result) => {
         if (result.ok) {
-          statusEl.textContent = "Thanks — your message has been sent. We'll reply within a few days.";
+          statusEl.textContent = "Thanks. Your message has been sent. We'll reply within a few days.";
           form.reset();
         } else {
-          statusEl.textContent = "Something went wrong sending that — please email us directly at " + DATA.contact.email + ".";
+          statusEl.textContent = "Something went wrong sending that. Please email us directly at " + DATA.contact.email + ".";
         }
       })
       .finally(() => { submitBtn.disabled = false; });

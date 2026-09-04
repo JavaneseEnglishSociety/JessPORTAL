@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" type="image/png" href="assets/images/favicon.png">
-<title>Staff Admin — JESS</title>
+<title>Staff Admin: JESS</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -62,37 +62,12 @@
 </div>
 
 <!-- ============ DASHBOARD ============ -->
-<div id="adminDashboard" hidden>
-  <div class="admin-overlay" id="adminOverlay">
-    <aside class="admin-sidebar">
-      <div class="admin-brand">JESS <span>Staff admin</span></div>
-      <nav class="admin-nav" id="adminNav">
-        <button data-panel="content" class="active">Content</button>
-        <button data-panel="messages">Messages</button>
-        <button data-panel="stats">Statistics</button>
-        <button data-panel="programs">Programs</button>
-        <button data-panel="events">Events</button>
-        <button data-panel="applications">Applications</button>
-        <button data-panel="registrations">Sign-ups</button>
-        <button data-panel="news">News</button>
-        <button data-panel="team">Team</button>
-        <button data-panel="testimonials">Testimonials</button>
-        <button data-panel="gallery">Gallery</button>
-        <button data-panel="partners">Partners</button>
-        <button data-panel="faq">FAQ</button>
-        <button data-panel="contact">Contact &amp; footer</button>
-        <button data-panel="theme">Theme</button>
-        <button data-panel="data">Data</button>
-      </nav>
-      <a class="btn btn-outline admin-exit" href="index.html" style="text-align:center;text-decoration:none;">View site</a>
-      <button class="btn btn-outline admin-exit" id="logoutBtn">Sign out</button>
-    </aside>
-
-    <section class="admin-content" id="adminContent">
-      <!-- panels injected by admin.js -->
-    </section>
-  </div>
-</div>
+<!-- Intentionally empty until admin.js confirms the signed-in Firebase
+     account is the actual admin — the sidebar, nav, and every panel are
+     injected only at that point, then wiped on logout. This means there
+     is no dashboard markup for a browser to render prematurely; it isn't
+     hidden, it simply doesn't exist yet. -->
+<div id="adminDashboard" hidden></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

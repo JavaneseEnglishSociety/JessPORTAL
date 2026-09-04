@@ -1245,3 +1245,55 @@ img.team-photo { object-fit: cover; }
   margin: 8px 0 0; font-size: 0.8rem; text-align: center;
   color: var(--color-text-gray); min-height: 1.1em;
 }
+
+/* ==========================================================================
+   ADDITIONS — logo crop tool, news images, new admin panels
+   ========================================================================== */
+
+/* Partner frame now renders the logo as a background image (set inline
+   by script.js/admin.js from logoZoom/logoPosX/logoPosY), so it can
+   actually fill the frame instead of floating inside it with padding.
+   The old <img> rule is unused now but harmless to leave in place. */
+.partner-frame {
+  background-repeat: no-repeat;
+  background-color: var(--color-page-soft);
+}
+
+/* Admin crop tool: a draggable, zoomable preview matching the public
+   frame's proportions, so what you see while dragging is what publishes. */
+.crop-tool {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 14px; border: 1.5px dashed var(--color-border-soft);
+  border-radius: var(--radius-sm); background: var(--color-bg-tint);
+}
+.crop-preview {
+  width: 120px; height: 120px; flex-shrink: 0;
+  border: var(--rule); background-repeat: no-repeat; background-color: var(--color-page-soft);
+  cursor: grab; touch-action: none;
+  box-shadow: var(--edge-sm);
+}
+.crop-preview:active { cursor: grabbing; }
+.crop-preview.shape-square { border-radius: var(--radius-sm); }
+.crop-preview.shape-circle { border-radius: 50%; }
+.crop-zoom-row {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.88rem; font-weight: 600; flex: 1; min-width: 160px;
+}
+.crop-zoom-row input[type="range"] { flex: 1; }
+
+/* News images */
+.news-card { padding: 0; overflow: hidden; }
+.news-image { width: 100%; aspect-ratio: 16/9; overflow: hidden; background: var(--color-page-soft); }
+.news-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.news-card-body { padding: 24px 26px; display: flex; flex-direction: column; flex: 1; }
+.news-image-modal { width: 100%; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 16px; border: var(--rule); }
+.news-image-modal img { width: 100%; display: block; }
+.news-image-preview {
+  width: 140px; border: var(--rule); border-radius: var(--radius-sm);
+  overflow: hidden; margin-bottom: 10px; background: var(--color-page-soft);
+}
+.news-image-preview img { width: 100%; display: block; }
+
+@media (max-width: 480px) {
+  .crop-tool { flex-direction: column; align-items: flex-start; }
+}

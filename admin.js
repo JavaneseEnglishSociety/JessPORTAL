@@ -143,6 +143,8 @@
         <div class="admin-brand">JESS <span>Staff admin</span></div>
         <nav class="admin-nav" id="adminNav">
           <button data-panel="content" class="active">Content</button>
+          <button data-panel="sections">Sections</button>
+          <button data-panel="about">About Points</button>
           <button data-panel="messages">Messages</button>
           <button data-panel="stats">Statistics</button>
           <button data-panel="programs">Programs</button>
@@ -151,6 +153,7 @@
           <button data-panel="registrations">Sign-ups</button>
           <button data-panel="news">News</button>
           <button data-panel="team">Team</button>
+          <button data-panel="volunteersteps">Volunteer Steps</button>
           <button data-panel="testimonials">Testimonials</button>
           <button data-panel="gallery">Gallery</button>
           <button data-panel="partners">Partners</button>
@@ -268,11 +271,14 @@
   function renderAdminPanel(name) {
     const panels = {
       content: panelContent,
+      sections: panelSections,
+      about: panelAbout,
       messages: panelMessages,
       stats: panelStats,
       programs: panelPrograms,
       events: panelEvents,
       team: panelTeam,
+      volunteersteps: panelVolunteerSteps,
       testimonials: panelTestimonials,
       gallery: panelGallery,
       partners: panelPartners,
@@ -289,6 +295,135 @@
   }
 
   /* ---- Content panel: hero + mission/vision ---- */
+  /* ---- Sections panel: every marker and heading on the page ---- */
+  function panelSections(root) {
+    const SECTIONS = [
+      { key: "about", label: "About" }, { key: "vision", label: "Vision" },
+      { key: "mission", label: "Mission" }, { key: "programs", label: "Programs" },
+      { key: "events", label: "Calendar" }, { key: "team", label: "Team" },
+      { key: "volunteer", label: "Volunteer" }, { key: "partners", label: "Partners" },
+      { key: "news", label: "News" }, { key: "testimonials", label: "Testimonials" },
+      { key: "gallery", label: "Gallery" }, { key: "faq", label: "FAQ" },
+      { key: "contact", label: "Contact" }
+    ];
+    root.innerHTML = `
+      <h2>Sections</h2>
+      <p class="panel-hint">The small label and the big heading shown at the top of each part of the page. Leave the Bahasa Indonesia fields blank to reuse the English text.</p>
+      ${SECTIONS.map(s => `
+        <div class="admin-item-card">
+          <h3 style="font-size:1.05rem;margin-bottom:12px;">${esc(s.label)}</h3>
+          <div class="field-row">
+            <div class="field-group"><label>Label</label><input data-sec="${s.key}_marker" value="${esc(DATA.sectionText[s.key + "_marker"] || "")}"></div>
+            <div class="field-group"><label>Heading</label><input data-sec="${s.key}_heading" value="${esc(DATA.sectionText[s.key + "_heading"] || "")}"></div>
+          </div>
+          <div class="field-row">
+            <div class="field-group"><label>Label (ID) <span class="opt">optional</span></label><input data-sec="${s.key}_marker_id" value="${esc(DATA.sectionText[s.key + "_marker_id"] || "")}"></div>
+            <div class="field-group"><label>Heading (ID) <span class="opt">optional</span></label><input data-sec="${s.key}_heading_id" value="${esc(DATA.sectionText[s.key + "_heading_id"] || "")}"></div>
+          </div>
+        </div>`).join("")}
+    `;
+    root.querySelectorAll("[data-sec]").forEach(inp => inp.addEventListener("input", () => {
+      DATA.sectionText[inp.dataset.sec] = inp.value; markDirty();
+    }));
+  }
+
+  /* ---- About Points panel ---- */
+  function panelAbout(root) {
+    const ICONS = ["book", "chat", "people", "globe", "star", "heart", "target", "clock"];
+    root.innerHTML = `
+      <h2>About Points</h2>
+      <p class="panel-hint">The four highlight cards in the About section, each with an icon, a title, and a short line.</p>
+      <div class="admin-card-list" id="aboutList"></div>
+      <button class="btn btn-outline" id="addAbout">+ Add point</button>
+    `;
+    function draw() {
+      root.querySelector("#aboutList").innerHTML = DATA.aboutPoints.map((a, i) => `
+        <div class="admin-item-card" data-i="${i}">
+          <div class="field-group">
+            <label>Icon</label>
+            <select data-f="icon">
+              ${ICONS.map(ic => `<option value="${ic}" ${a.icon === ic ? "selected" : ""}>${ic.charAt(0).toUpperCase() + ic.slice(1)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field-group"><label>Title</label><input data-f="title" value="${esc(a.title)}"></div>
+          <div class="field-group"><label>Description</label><textarea rows="2" data-f="desc">${esc(a.desc)}</textarea></div>
+          <div class="field-group"><label>Title (ID) <span class="opt">optional</span></label><input data-f="title_id" value="${esc(a.title_id || "")}"></div>
+          <div class="field-group"><label>Description (ID) <span class="opt">optional</span></label><textarea rows="2" data-f="desc_id">${esc(a.desc_id || "")}</textarea></div>
+          <div class="admin-item-actions">
+            <button class="move" data-up>↑</button>
+            <button class="move" data-down>↓</button>
+            <button class="danger" data-del>Remove</button>
+          </div>
+        </div>`).join("");
+
+      root.querySelectorAll("#aboutList .admin-item-card").forEach(card => {
+        const i = Number(card.dataset.i);
+        card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
+          DATA.aboutPoints[i][inp.dataset.f] = inp.value; markDirty();
+        }));
+        card.querySelector("[data-del]").addEventListener("click", () => {
+          DATA.aboutPoints.splice(i, 1); markDirty(); draw(); toast("Point removed. Click \"Save Changes\" to publish.");
+        });
+        card.querySelector("[data-up]").addEventListener("click", () => {
+          if (i > 0) { [DATA.aboutPoints[i - 1], DATA.aboutPoints[i]] = [DATA.aboutPoints[i], DATA.aboutPoints[i - 1]]; markDirty(); draw(); }
+        });
+        card.querySelector("[data-down]").addEventListener("click", () => {
+          if (i < DATA.aboutPoints.length - 1) { [DATA.aboutPoints[i + 1], DATA.aboutPoints[i]] = [DATA.aboutPoints[i], DATA.aboutPoints[i + 1]]; markDirty(); draw(); }
+        });
+      });
+    }
+    draw();
+    root.querySelector("#addAbout").addEventListener("click", () => {
+      DATA.aboutPoints.push({ id: uid(), icon: "book", title: "New point", desc: "Description here.", title_id: "", desc_id: "" });
+      markDirty(); draw();
+    });
+  }
+
+  /* ---- Volunteer Steps panel ---- */
+  function panelVolunteerSteps(root) {
+    root.innerHTML = `
+      <h2>Volunteer Steps</h2>
+      <p class="panel-hint">The numbered steps shown in the Volunteer section, explaining how someone joins.</p>
+      <div class="admin-card-list" id="volStepsList"></div>
+      <button class="btn btn-outline" id="addVolStep">+ Add step</button>
+    `;
+    function draw() {
+      root.querySelector("#volStepsList").innerHTML = DATA.volunteerSteps.map((v, i) => `
+        <div class="admin-item-card" data-i="${i}">
+          <div class="field-group"><label>Title</label><input data-f="title" value="${esc(v.title)}"></div>
+          <div class="field-group"><label>Description</label><textarea rows="2" data-f="desc">${esc(v.desc)}</textarea></div>
+          <div class="field-group"><label>Title (ID) <span class="opt">optional</span></label><input data-f="title_id" value="${esc(v.title_id || "")}"></div>
+          <div class="field-group"><label>Description (ID) <span class="opt">optional</span></label><textarea rows="2" data-f="desc_id">${esc(v.desc_id || "")}</textarea></div>
+          <div class="admin-item-actions">
+            <button class="move" data-up>↑</button>
+            <button class="move" data-down>↓</button>
+            <button class="danger" data-del>Remove</button>
+          </div>
+        </div>`).join("");
+
+      root.querySelectorAll("#volStepsList .admin-item-card").forEach(card => {
+        const i = Number(card.dataset.i);
+        card.querySelectorAll("[data-f]").forEach(inp => inp.addEventListener("input", () => {
+          DATA.volunteerSteps[i][inp.dataset.f] = inp.value; markDirty();
+        }));
+        card.querySelector("[data-del]").addEventListener("click", () => {
+          DATA.volunteerSteps.splice(i, 1); markDirty(); draw(); toast("Step removed. Click \"Save Changes\" to publish.");
+        });
+        card.querySelector("[data-up]").addEventListener("click", () => {
+          if (i > 0) { [DATA.volunteerSteps[i - 1], DATA.volunteerSteps[i]] = [DATA.volunteerSteps[i], DATA.volunteerSteps[i - 1]]; markDirty(); draw(); }
+        });
+        card.querySelector("[data-down]").addEventListener("click", () => {
+          if (i < DATA.volunteerSteps.length - 1) { [DATA.volunteerSteps[i + 1], DATA.volunteerSteps[i]] = [DATA.volunteerSteps[i], DATA.volunteerSteps[i + 1]]; markDirty(); draw(); }
+        });
+      });
+    }
+    draw();
+    root.querySelector("#addVolStep").addEventListener("click", () => {
+      DATA.volunteerSteps.push({ id: uid(), title: "New step", desc: "Description here.", title_id: "", desc_id: "" });
+      markDirty(); draw();
+    });
+  }
+
   function panelContent(root) {
     root.innerHTML = `
       <h2>Site Content</h2>
@@ -343,7 +478,7 @@
   function panelMessages(root) {
     root.innerHTML = `
       <h2>Messages</h2>
-      <p class="panel-hint">Contact form submissions from the public site. Read one, then delete it with the button below it — nothing is removed automatically.</p>
+      <p class="panel-hint">Contact form submissions from the public site. Read one, then delete it with the button below it. Nothing is removed automatically.</p>
       <div id="msgLoading" style="color:var(--color-text-gray);font-size:0.9rem;">Loading messages…</div>
       <div class="admin-card-list" id="msgList"></div>
     `;
@@ -364,7 +499,7 @@
       listEl.innerHTML = messages.map((m) => `
         <div class="admin-item-card" data-id="${m.id}">
           <div class="admin-item-card-head">
-            <strong>${esc(m.name || "(no name)")} — ${esc(m.email || "(no email)")}</strong>
+            <strong>${esc(m.name || "(no name)")}, ${esc(m.email || "(no email)")}</strong>
             <div class="admin-item-actions"><button class="danger" data-del>Delete</button></div>
           </div>
           <div style="font-size:0.8rem;color:var(--color-text-gray);margin-bottom:8px;">${timeAgo(m.createdAt)}</div>
@@ -415,7 +550,7 @@
     `;
 
     function fmtWhen(ts) {
-      if (!ts) return "—";
+      if (!ts) return "-";
       const diffMs = Date.now() - ts;
       if (diffMs < 60000) return "just now";
       if (diffMs < 3600000) return Math.floor(diffMs / 60000) + "m ago";
@@ -469,7 +604,7 @@
           DATA.stats[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.stats.splice(i, 1); markDirty(); draw(); toast("Statistic removed — click \"Save Changes\" to publish.");
+          DATA.stats.splice(i, 1); markDirty(); draw(); toast("Statistic removed. Click \"Save Changes\" to publish.");
         });
       });
     }
@@ -508,7 +643,7 @@
           DATA.programs[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.programs.splice(i, 1); markDirty(); draw(); toast("Program removed — click \"Save Changes\" to publish.");
+          DATA.programs.splice(i, 1); markDirty(); draw(); toast("Program removed. Click \"Save Changes\" to publish.");
         });
       });
     }
@@ -560,7 +695,7 @@
         const id = b.closest("[data-id]").dataset.id;
         if (confirm("Delete this event?")) {
           DATA.events = DATA.events.filter(e => e.id !== id);
-          markDirty(); draw(); toast("Event deleted — click \"Save Changes\" to publish.");
+          markDirty(); draw(); toast("Event deleted. Click \"Save Changes\" to publish.");
         }
       }));
     }
@@ -697,7 +832,7 @@
       }
       markDirty();
       overlay.remove();
-      toast((existing ? "Event updated" : "Event added") + " — click \"Save Changes\" to publish.");
+      toast((existing ? "Event updated" : "Event added") + ". Click \"Save Changes\" to publish.");
       if (onDone) onDone();
     });
   }
@@ -742,11 +877,11 @@
           compressImage(file).then((url) => {
             DATA.team[i].photo = url;
             markDirty(); draw();
-            toast("Photo added — click \"Save Changes\" to publish.");
-          }).catch(() => toast("Couldn't process that image — try a different file."));
+            toast("Photo added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed — click \"Save Changes\" to publish.");
+          DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed. Click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
           if (i > 0) { [DATA.team[i - 1], DATA.team[i]] = [DATA.team[i], DATA.team[i - 1]]; markDirty(); draw(); }
@@ -795,11 +930,11 @@
           compressImage(file).then((url) => {
             DATA.testimonials[i].photo = url;
             markDirty(); draw();
-            toast("Photo added — click \"Save Changes\" to publish.");
-          }).catch(() => toast("Couldn't process that image — try a different file."));
+            toast("Photo added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed — click \"Save Changes\" to publish.");
+          DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed. Click \"Save Changes\" to publish.");
         });
       });
     }
@@ -843,10 +978,10 @@
             DATA.gallery[i].img = url;
             markDirty(); draw();
             toast("Image added — click \"Save Changes\" to publish.");
-          }).catch(() => toast("Couldn't process that image — try a different file."));
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed — click \"Save Changes\" to publish.");
+          DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed. Click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
           if (i > 0) { [DATA.gallery[i - 1], DATA.gallery[i]] = [DATA.gallery[i], DATA.gallery[i - 1]]; markDirty(); draw(); }
@@ -867,10 +1002,16 @@
   function panelPartners(root) {
     root.innerHTML = `
       <h2>Partners</h2>
-      <p class="panel-hint">Each partner shows their logo in a frame you choose, a short description, and an optional button linking to their website.</p>
+      <p class="panel-hint">Each partner shows their logo in a frame you choose, a short description, and an optional button linking to their website. Drag the logo preview to reposition it and use the slider to zoom, so it actually fills the frame the way you want.</p>
       <div class="admin-card-list" id="partList"></div>
       <button class="btn btn-outline" id="addPart">+ Add Partner</button>
     `;
+    function frameStyleFor(p) {
+      const zoom = p.logoZoom || 1;
+      const posX = (typeof p.logoPosX === "number") ? p.logoPosX : 50;
+      const posY = (typeof p.logoPosY === "number") ? p.logoPosY : 50;
+      return `background-image:url('${esc(p.logo)}');background-size:${(zoom * 100).toFixed(0)}%;background-position:${posX}% ${posY}%;`;
+    }
     function draw() {
       root.querySelector("#partList").innerHTML = DATA.partners.map((p, i) => `
         <div class="admin-item-card" data-i="${i}">
@@ -879,7 +1020,18 @@
             <div class="field-group"><label>Website URL</label><input data-f="url" value="${esc(p.url)}"></div>
           </div>
           <div class="field-group"><label>Logo</label><input type="file" accept="image/*" data-photo></div>
-          ${p.logo ? `<div class="partner-logo-preview"><div class="partner-frame shape-${p.frameShape === "circle" ? "circle" : "square"}"><img src="${esc(p.logo)}" alt=""></div></div>` : ""}
+
+          ${p.logo ? `
+          <div class="field-group">
+            <label>Fit and crop <span class="opt">drag to reposition, slider to zoom</span></label>
+            <div class="crop-tool">
+              <div class="crop-preview shape-${p.frameShape === "circle" ? "circle" : "square"}" data-crop-preview style="${frameStyleFor(p)}"></div>
+              <div class="crop-zoom-row">
+                <span>Zoom</span>
+                <input type="range" data-zoom min="1" max="3" step="0.05" value="${p.logoZoom || 1}">
+              </div>
+            </div>
+          </div>` : ""}
 
           <div class="field-group">
             <label>Logo frame</label>
@@ -927,15 +1079,57 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing logo…");
-          compressImage(file, 320, 0.8).then((url) => {
+          compressImage(file, 480, 0.85).then((url) => {
             DATA.partners[i].logo = url;
+            DATA.partners[i].logoZoom = 1;
+            DATA.partners[i].logoPosX = 50;
+            DATA.partners[i].logoPosY = 50;
             markDirty(); draw();
-            toast("Logo added — click \"Save Changes\" to publish.");
-            draw();
-          }).catch(() => toast("Couldn't process that image — try a different file."));
+            toast("Logo added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
+
+        // Crop tool: drag to reposition, slider to zoom. Every change is
+        // free to apply immediately since it only marks the document
+        // dirty in memory now, nothing hits the network until Save.
+        const preview = card.querySelector("[data-crop-preview]");
+        if (preview) {
+          let dragging = false, startX = 0, startY = 0, startPosX = 50, startPosY = 50;
+          const partner = DATA.partners[i];
+          const onMove = (clientX, clientY) => {
+            const rect = preview.getBoundingClientRect();
+            const dxPct = ((clientX - startX) / rect.width) * 100;
+            const dyPct = ((clientY - startY) / rect.height) * 100;
+            // Dragging right/down moves the visible image with the
+            // cursor, which means the background-position value itself
+            // moves the opposite way.
+            partner.logoPosX = Math.max(0, Math.min(100, startPosX - dxPct));
+            partner.logoPosY = Math.max(0, Math.min(100, startPosY - dyPct));
+            preview.style.backgroundPosition = `${partner.logoPosX}% ${partner.logoPosY}%`;
+            markDirty();
+          };
+          preview.addEventListener("pointerdown", (e) => {
+            dragging = true;
+            startX = e.clientX; startY = e.clientY;
+            startPosX = partner.logoPosX || 50; startPosY = partner.logoPosY || 50;
+            preview.setPointerCapture(e.pointerId);
+          });
+          preview.addEventListener("pointermove", (e) => {
+            if (!dragging) return;
+            onMove(e.clientX, e.clientY);
+          });
+          preview.addEventListener("pointerup", () => { dragging = false; });
+          preview.addEventListener("pointercancel", () => { dragging = false; });
+
+          card.querySelector("[data-zoom]").addEventListener("input", (e) => {
+            partner.logoZoom = Number(e.target.value);
+            preview.style.backgroundSize = `${(partner.logoZoom * 100).toFixed(0)}%`;
+            markDirty();
+          });
+        }
+
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.partners.splice(i, 1); markDirty(); draw(); toast("Partner removed — click \"Save Changes\" to publish.");
+          DATA.partners.splice(i, 1); markDirty(); draw(); toast("Partner removed. Click \"Save Changes\" to publish.");
         });
         card.querySelector("[data-up]").addEventListener("click", () => {
           if (i > 0) { [DATA.partners[i - 1], DATA.partners[i]] = [DATA.partners[i], DATA.partners[i - 1]]; markDirty(); draw(); }
@@ -949,7 +1143,8 @@
     root.querySelector("#addPart").addEventListener("click", () => {
       DATA.partners.push({
         id: uid(), name: "New Partner", url: "#", logo: "",
-        description: "", description_id: "", frameShape: "square", showButton: true
+        description: "", description_id: "", frameShape: "square", showButton: true,
+        logoZoom: 1, logoPosX: 50, logoPosY: 50
       });
       markDirty(); draw();
     });
@@ -978,7 +1173,7 @@
           DATA.faq[i][inp.dataset.f] = inp.value; markDirty();
         }));
         card.querySelector("[data-del]").addEventListener("click", () => {
-          DATA.faq.splice(i, 1); markDirty(); draw(); toast("Question removed — click \"Save Changes\" to publish.");
+          DATA.faq.splice(i, 1); markDirty(); draw(); toast("Question removed. Click \"Save Changes\" to publish.");
         });
       });
     }
@@ -1007,6 +1202,11 @@
           </div>
           <div class="field-group"><label>Body</label><textarea rows="4" data-f="body">${esc(n.body)}</textarea></div>
           <div class="field-group">
+            <label>Image <span class="opt">optional</span></label>
+            <input type="file" accept="image/*" data-photo>
+          </div>
+          ${n.image ? `<div class="news-image-preview"><img src="${esc(n.image)}" alt=""></div><button type="button" class="btn btn-outline btn-sm" data-remove-image>Remove image</button>` : ""}
+          <div class="field-group">
             <label>Title (Bahasa Indonesia) <span class="opt">optional</span></label>
             <input data-f="title_id" value="${esc(n.title_id || "")}" placeholder="Leave blank to reuse the English title">
           </div>
@@ -1031,10 +1231,24 @@
         card.querySelector("[data-pub]").addEventListener("change", (e) => {
           item.published = e.target.checked; markDirty();
         });
+        card.querySelector("[data-photo]").addEventListener("change", (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          toast("Processing image…");
+          compressImage(file, 900, 0.8).then((url) => {
+            item.image = url;
+            markDirty(); draw();
+            toast("Image added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
+        });
+        const removeBtn = card.querySelector("[data-remove-image]");
+        if (removeBtn) removeBtn.addEventListener("click", () => {
+          item.image = ""; markDirty(); draw();
+        });
         card.querySelector("[data-del]").addEventListener("click", () => {
           if (!confirm("Remove this post?")) return;
           DATA.news = DATA.news.filter(x => String(x.id) !== String(id));
-          markDirty(); draw(); toast("Post removed — click \"Save Changes\" to publish.");
+          markDirty(); draw(); toast("Post removed. Click \"Save Changes\" to publish.");
         });
       });
     }
@@ -1042,7 +1256,7 @@
     root.querySelector("#addNews").addEventListener("click", () => {
       const today = new Date();
       const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", published: true, title_id: "", body_id: "" });
+      DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", image: "", published: true, title_id: "", body_id: "" });
       markDirty(); draw();
     });
   }
@@ -1051,7 +1265,7 @@
   function panelApplications(root) {
     root.innerHTML = `
       <h2>Volunteer applications</h2>
-      <p class="panel-hint">People who applied to join JESS. Accept or decline, optionally leave a note, and use "Email applicant" to send them the real email — this site has no backend to send mail automatically, so that button just opens your email client with the message already written.</p>
+      <p class="panel-hint">People who applied to join JESS. Accept or decline, optionally leave a note, and use "Email applicant" to send them the real email. This site has no backend to send mail automatically, so that button just opens your email client with the message already written.</p>
       <div class="admin-toolbar" id="appTabs">
         <button type="button" class="tab-btn active" data-tab="pending">Pending</button>
         <button type="button" class="tab-btn" data-tab="accepted">Accepted</button>
@@ -1080,10 +1294,10 @@
         ? "Your JESS application"
         : "Your JESS application";
       const body = app.status === "accepted"
-        ? `Hi ${app.name},\n\nGreat news — you've been accepted to JESS! ${app.note ? app.note + "\n\n" : ""}We'll follow up here with next steps.\n\nWelcome aboard,\nJESS`
+        ? `Hi ${app.name},\n\nGreat news, you have been accepted to JESS! ${app.note ? app.note + "\n\n" : ""}We will follow up here with next steps.\n\nWelcome aboard,\nJESS`
         : app.status === "declined"
         ? `Hi ${app.name},\n\nThank you for applying to JESS. ${app.note ? app.note + " " : ""}We're not able to bring you on this round, but we'd love to see you apply again in future.\n\nThank you,\nJESS`
-        : `Hi ${app.name},\n\nThanks for applying to JESS — we're reviewing your application and will be in touch soon.\n\nJESS`;
+        : `Hi ${app.name},\n\nThanks for applying to JESS. We are reviewing your application and will be in touch soon.\n\nJESS`;
       return `mailto:${encodeURIComponent(app.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     }
 
@@ -1144,7 +1358,7 @@
                 toast(`Marked ${btn.dataset.status}.`);
                 draw();
               } else {
-                toast("Couldn't update — check your connection.");
+                toast("Could not update. Check your connection.");
               }
             });
           });
@@ -1354,7 +1568,7 @@
     root.querySelector("#resetTheme").addEventListener("click", () => {
       DATA.theme = window.JESSData.defaultData().theme;
       markDirty(); panelTheme(root);
-      toast("Theme reset — click \"Save Changes\" to publish it.");
+      toast("Theme reset. Click \"Save Changes\" to publish it.");
     });
   }
 
@@ -1389,7 +1603,7 @@
           DATA = Object.assign(window.JESSData.defaultData(), parsed);
           markDirty();
           renderAdminPanel("data");
-          toast("Data imported — click \"Save Changes\" to publish it.");
+          toast("Data imported. Click \"Save Changes\" to publish it.");
         } catch (err) {
           alert("Invalid JSON file.");
         }
@@ -1401,7 +1615,7 @@
         DATA = window.JESSData.defaultData();
         markDirty();
         renderAdminPanel("data");
-        toast("Reset locally — click \"Save Changes\" to publish it.");
+        toast("Reset locally. Click \"Save Changes\" to publish it.");
       }
     });
   }
