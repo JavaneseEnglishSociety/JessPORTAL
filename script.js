@@ -54,19 +54,21 @@
   }
 
   function renderHero() {
-    document.getElementById("heroTitle").textContent = field(DATA.hero, "title");
-    document.getElementById("heroSubtitle").textContent = field(DATA.hero, "subtitle");
-    document.getElementById("heroBtnPrimary").textContent = field(DATA.hero, "primaryBtn");
-    document.getElementById("heroBtnSecondary").textContent = field(DATA.hero, "secondaryBtn");
+    document.getElementById("heroTitle").innerHTML = autoField(DATA.hero, "title");
+    document.getElementById("heroSubtitle").innerHTML = autoField(DATA.hero, "subtitle");
+    document.getElementById("heroBtnPrimary").innerHTML = autoField(DATA.hero, "primaryBtn");
+    document.getElementById("heroBtnSecondary").innerHTML = autoField(DATA.hero, "secondaryBtn");
   }
 
   function renderMission() {
-    document.getElementById("visionText").textContent = field(DATA.mission, "vision");
-    const mList = (lang === "id" && DATA.mission.missionList_id && DATA.mission.missionList_id.length)
-      ? DATA.mission.missionList_id
-      : DATA.mission.missionList;
+    document.getElementById("visionText").innerHTML = autoField(DATA.mission, "vision");
+    const hasManualList = lang === "id" && DATA.mission.missionList_id && DATA.mission.missionList_id.length;
+    const mList = hasManualList ? DATA.mission.missionList_id : DATA.mission.missionList;
     document.getElementById("missionList").innerHTML = mList
-      .map((m) => `<li>${esc(m)}</li>`).join("");
+      .map((m) => hasManualList
+        ? `<li>${esc(m)}</li>`
+        : `<li><span data-autotranslate="${esc(m)}">${esc(m)}</span></li>`)
+      .join("");
   }
 
   // A small, fixed set of icon choices for About points. Admin picks one
@@ -93,8 +95,8 @@
     grid.innerHTML = (DATA.aboutPoints || []).map(a => `
       <div class="about-point fade-in-up visible">
         <div class="point-icon">${iconSvg(a.icon)}</div>
-        <h3>${esc(field(a, "title"))}</h3>
-        <p>${esc(field(a, "desc"))}</p>
+        <h3>${autoField(a, "title")}</h3>
+        <p>${autoField(a, "desc")}</p>
       </div>`).join("");
   }
 
@@ -102,7 +104,7 @@
     const list = document.getElementById("volunteerStepsList");
     if (!list) return;
     list.innerHTML = (DATA.volunteerSteps || []).map(v => `
-      <li><strong>${esc(field(v, "title"))}</strong><span>${esc(field(v, "desc"))}</span></li>`).join("");
+      <li><strong>${autoField(v, "title")}</strong><span>${autoField(v, "desc")}</span></li>`).join("");
   }
 
   function renderStats() {
@@ -117,8 +119,8 @@
     document.getElementById("programsGrid").innerHTML = DATA.programs.map(p => `
       <div class="program-card fade-in-up visible">
         <div class="program-icon">${p.icon || "📘"}</div>
-        <h3>${esc(field(p, "title"))}</h3>
-        <p>${esc(field(p, "desc"))}</p>
+        <h3>${autoField(p, "title")}</h3>
+        <p>${autoField(p, "desc")}</p>
       </div>`).join("");
   }
 
@@ -136,37 +138,76 @@
    * since this only ever supplements the manual translations already
    * in place, never replaces them.
    * --------------------------------------------------------------------- */
+  /* ---- Automatic translation (no admin typing required) -------------- *
+   * Every fixed UI label (nav, buttons, section markers/headings) is
+   * already translated instantly via the dictionary in data.js — no
+   * network call needed for those, and nothing for the admin to type.
+   *
+   * Everything else — programs, events, team, testimonials, gallery
+   * captions, FAQ, news, contact text, partner descriptions — is
+   * content someone typed into the admin panel, in English, with no
+   * "(ID)" field ever filled in. For THAT content, this calls a
+   * translation service over the network so the whole site comes
+   * across in Indonesian without anyone writing a second copy of
+   * everything by hand.
+   *
+   * This uses Google Translate's public web-client endpoint (the same
+   * one translate.google.com itself calls from the browser) rather
+   * than the official Cloud Translation API, because the official API
+   * requires a billing account and a secret key — and a secret key
+   * cannot be kept secret in a static site's own JavaScript anyway,
+   * since anyone can view-source it. The endpoint used here needs no
+   * key and works from any browser, but it is not an officially
+   * supported public API: Google could rate-limit or change it
+   * without notice. Every call is wrapped so that if it ever fails,
+   * the text just stays in English instead of breaking the page, and
+   * results are cached so the same sentence is never fetched twice.
+   * --------------------------------------------------------------------- */
   const translationCache = new Map();
-  let nativeTranslatorPromise = null;
+  const translationInFlight = new Map();
 
-  function getNativeTranslator() {
-    if (nativeTranslatorPromise) return nativeTranslatorPromise;
-    nativeTranslatorPromise = (async () => {
-      try {
-        if (typeof self.Translator === "undefined") return null;
-        const availability = await self.Translator.availability({ sourceLanguage: "en", targetLanguage: "id" });
-        if (availability === "unavailable") return null;
-        return await self.Translator.create({ sourceLanguage: "en", targetLanguage: "id" });
-      } catch (e) {
-        console.warn("JESS: native translation unavailable in this browser.", e);
-        return null;
-      }
-    })();
-    return nativeTranslatorPromise;
+  function loadTranslationCache() {
+    try {
+      const raw = sessionStorage.getItem("jess-translation-cache");
+      if (raw) JSON.parse(raw).forEach(([k, v]) => translationCache.set(k, v));
+    } catch (e) { /* ignore */ }
   }
+  function saveTranslationCache() {
+    try {
+      sessionStorage.setItem("jess-translation-cache", JSON.stringify([...translationCache].slice(-500)));
+    } catch (e) { /* ignore */ }
+  }
+  loadTranslationCache();
 
-  async function nativeTranslate(text) {
+  async function apiTranslate(text) {
     if (!text || !text.trim()) return text;
     if (translationCache.has(text)) return translationCache.get(text);
-    const translator = await getNativeTranslator();
-    if (!translator) return text;
-    try {
-      const result = await translator.translate(text);
-      translationCache.set(text, result);
-      return result;
-    } catch (e) {
-      return text;
-    }
+    // If a request for this exact text is already in flight (very common
+    // when several elements on the page share the same short label),
+    // reuse that one promise instead of firing a second identical
+    // request — this is what keeps a full page re-render from turning
+    // into hundreds of network calls.
+    if (translationInFlight.has(text)) return translationInFlight.get(text);
+    const promise = (async () => {
+      try {
+        const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=id&dt=t&q=" + encodeURIComponent(text);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("translate request failed: " + res.status);
+        const data = await res.json();
+        const translated = (data[0] || []).map((chunk) => chunk[0]).join("");
+        const finalText = translated || text;
+        translationCache.set(text, finalText);
+        saveTranslationCache();
+        return finalText;
+      } catch (e) {
+        console.warn("JESS: automatic translation failed for one piece of text; leaving it in English.", e);
+        return text;
+      } finally {
+        translationInFlight.delete(text);
+      }
+    })();
+    translationInFlight.set(text, promise);
+    return promise;
   }
 
   // Elements carrying data-autotranslate="<original English>" get
@@ -177,12 +218,28 @@
     if (lang !== "id") return;
     document.querySelectorAll("[data-autotranslate]").forEach((el) => {
       const original = el.dataset.autotranslate;
-      nativeTranslate(original).then((translated) => {
+      apiTranslate(original).then((translated) => {
         if (lang === "id" && el.isConnected && el.dataset.autotranslate === original) {
           el.textContent = translated;
         }
       });
     });
+  }
+
+  // Renders a field that MAY have a manually-written "(ID)" version.
+  // If the admin has actually filled one in, that wins outright (a
+  // human translation is always better than a machine one) and no
+  // network call happens. If not, this renders the English text
+  // immediately (so the page never looks empty while waiting) inside a
+  // marker span that runAutoTranslate() will silently upgrade to
+  // Indonesian a moment later. In English mode this is identical to
+  // just calling field() directly.
+  function autoField(obj, name) {
+    if (lang !== "id") return esc(field(obj, name));
+    const hasManual = obj && typeof obj[name + "_id"] === "string" && obj[name + "_id"].trim() !== "";
+    if (hasManual) return esc(field(obj, name));
+    const original = (obj && obj[name]) || "";
+    return `<span data-autotranslate="${esc(original)}">${esc(original)}</span>`;
   }
 
   function renderTeam() {
@@ -201,7 +258,6 @@
           </div>
         </div>
       </div>`).join("");
-    runAutoTranslate();
   }
 
   function renderPartners() {
@@ -221,25 +277,29 @@
         ? ""
         : `<span class="partner-initials">${esc((p.name || "?").trim().charAt(0).toUpperCase())}</span>`;
       const desc = field(p, "description");
+      const hasManualDesc = typeof p.description_id === "string" && p.description_id.trim() !== "";
+      const descHtml = desc
+        ? (lang === "id" && !hasManualDesc
+            ? `<p class="partner-desc" data-autotranslate="${esc(desc)}">${esc(desc)}</p>`
+            : `<p class="partner-desc">${esc(desc)}</p>`)
+        : "";
       return `
       <div class="partner-card fade-in-up visible">
         <div class="partner-frame ${shape}"${frameStyle}>${frameInner}</div>
         <h3 class="partner-name">${esc(p.name)}</h3>
-        ${desc ? `<p class="partner-desc">${esc(desc)}</p>` : ""}
+        ${descHtml}
         ${p.showButton !== false && p.url
           ? `<a class="btn btn-outline btn-sm partner-visit" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(L.t("visit_website", lang))}</a>`
           : ""}
       </div>`;
     }).join("");
   }
-
   function renderGallery() {
     document.getElementById("galleryGrid").innerHTML = DATA.gallery.map(g => `
       <div class="masonry-item fade-in-up visible">
         <img loading="lazy" src="${g.img || placeholderImg()}" alt="${esc(g.caption)}">
         <div class="masonry-caption" data-autotranslate="${esc(g.caption)}">${esc(g.caption)}</div>
       </div>`).join("");
-    runAutoTranslate();
   }
 
   function placeholderImg() {
@@ -267,6 +327,10 @@
     grid.innerHTML = posts.map(n => {
       const body = field(n, "body");
       const short = body.length > 180 ? body.slice(0, 180).trim() + "…" : body;
+      const hasManualBody = typeof n.body_id === "string" && n.body_id.trim() !== "";
+      const shortHtml = (lang === "id" && !hasManualBody)
+        ? `<span data-autotranslate="${esc(short)}">${esc(short)}</span>`
+        : esc(short);
       const dateLabel = n.date
         ? new Date(n.date + "T00:00:00").toLocaleDateString(lang === "id" ? "id-ID" : undefined,
             { year: "numeric", month: "long", day: "numeric" })
@@ -276,8 +340,8 @@
         ${n.image ? `<div class="news-image"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}" loading="lazy"></div>` : ""}
         <div class="news-card-body">
           ${dateLabel ? `<div class="news-date">${esc(dateLabel)}</div>` : ""}
-          <h3>${esc(field(n, "title"))}</h3>
-          <p class="news-body">${esc(short)}</p>
+          <h3>${autoField(n, "title")}</h3>
+          <p class="news-body">${shortHtml}</p>
           ${body.length > 180
             ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(L.t("read_more", lang))}</button>`
             : ""}
@@ -298,11 +362,12 @@
       <div class="modal" role="dialog" aria-modal="true">
         <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
         ${n.image ? `<div class="news-image news-image-modal"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}"></div>` : ""}
-        <h3>${esc(field(n, "title"))}</h3>
+        <h3>${autoField(n, "title")}</h3>
         ${n.date ? `<p class="news-date">${esc(n.date)}</p>` : ""}
-        <p style="white-space:pre-wrap;">${esc(field(n, "body"))}</p>
+        <p style="white-space:pre-wrap;">${autoField(n, "body")}</p>
       </div>`;
     document.body.appendChild(overlay);
+    runAutoTranslate();
     const close = () => overlay.remove();
     overlay.querySelector(".modal-close").addEventListener("click", close);
     overlay.addEventListener("click", (e2) => { if (e2.target === overlay) close(); });
@@ -311,8 +376,8 @@
   function renderFaq() {
     document.getElementById("faqAccordion").innerHTML = DATA.faq.map((f, i) => `
       <div class="accordion-item" data-index="${i}">
-        <button class="accordion-q">${esc(field(f, "q"))} <span class="chev">&#9662;</span></button>
-        <div class="accordion-a"><p>${esc(field(f, "a"))}</p></div>
+        <button class="accordion-q">${autoField(f, "q")} <span class="chev">&#9662;</span></button>
+        <div class="accordion-a"><p>${autoField(f, "a")}</p></div>
       </div>`).join("");
 
     document.querySelectorAll("#faqAccordion .accordion-q").forEach(btn => {
@@ -333,7 +398,7 @@
   }
 
   function renderContact() {
-    document.getElementById("contactIntro").textContent = field(DATA.contact, "intro");
+    document.getElementById("contactIntro").innerHTML = autoField(DATA.contact, "intro");
     document.getElementById("contactEmail").textContent = DATA.contact.email;
     document.getElementById("contactLocation").textContent = DATA.contact.location;
     document.getElementById("socialInstagram").href = DATA.contact.instagram;
@@ -362,6 +427,12 @@
     renderTestimonials();
     applyTheme();
     applyStaticStrings();
+    // One single DOM-wide translation pass per full render, instead of
+    // one per section — each render function above used to call this
+    // itself, which meant a full page render fired the same scan over
+    // a growing DOM more than a dozen times in a row and multiplied
+    // network requests to the translation service accordingly.
+    runAutoTranslate();
   }
 
   /* ---- Language toggle ---------------------------------------------- *
@@ -420,7 +491,6 @@
       L.setLang(lang);
       applyStaticStrings();
       renderAll();
-      runAutoTranslate();
     });
   }
 
