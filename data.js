@@ -465,6 +465,7 @@ const UI_STRINGS = {
     confirm_code: "Confirmation code", check: "Check",
     code_not_found: "We couldn't find an application with that code. Double-check it and try again.",
     status_pending: "Under review", status_accepted: "Accepted!", status_declined: "Not selected this time",
+    event_passed: "Event passed",
     check_email_notice: "Please check your email for next steps.",
     visit_website: "Visit website"
   },
@@ -517,6 +518,7 @@ const UI_STRINGS = {
     confirm_code: "Kode konfirmasi", check: "Cek",
     code_not_found: "Kami tidak menemukan pendaftaran dengan kode itu. Periksa kembali dan coba lagi.",
     status_pending: "Sedang ditinjau", status_accepted: "Diterima!", status_declined: "Belum berhasil kali ini",
+    event_passed: "Acara telah selesai",
     check_email_notice: "Silakan periksa email untuk langkah selanjutnya.",
     visit_website: "Kunjungi situs"
   }

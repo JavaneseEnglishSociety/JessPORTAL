@@ -122,6 +122,69 @@
       </div>`).join("");
   }
 
+  /* ---- Native browser translation (progressive enhancement) --------- *
+   * Chrome and Edge ship an on-device Translator API (self.Translator)
+   * that works entirely in the browser, no server, no API key, and no
+   * per-request network call once its small language model has
+   * downloaded once. It fills a real gap: several fields never got a
+   * manual "(ID)" box in the admin panel at all (team bios/roles,
+   * testimonial reviews, gallery captions, event descriptions), so
+   * without this they simply stay in English forever when Indonesian
+   * is selected. Where the API isn't available (Safari, Firefox, an
+   * older Chrome), those specific fields just remain in English —
+   * everything else on the site keeps working exactly as before,
+   * since this only ever supplements the manual translations already
+   * in place, never replaces them.
+   * --------------------------------------------------------------------- */
+  const translationCache = new Map();
+  let nativeTranslatorPromise = null;
+
+  function getNativeTranslator() {
+    if (nativeTranslatorPromise) return nativeTranslatorPromise;
+    nativeTranslatorPromise = (async () => {
+      try {
+        if (typeof self.Translator === "undefined") return null;
+        const availability = await self.Translator.availability({ sourceLanguage: "en", targetLanguage: "id" });
+        if (availability === "unavailable") return null;
+        return await self.Translator.create({ sourceLanguage: "en", targetLanguage: "id" });
+      } catch (e) {
+        console.warn("JESS: native translation unavailable in this browser.", e);
+        return null;
+      }
+    })();
+    return nativeTranslatorPromise;
+  }
+
+  async function nativeTranslate(text) {
+    if (!text || !text.trim()) return text;
+    if (translationCache.has(text)) return translationCache.get(text);
+    const translator = await getNativeTranslator();
+    if (!translator) return text;
+    try {
+      const result = await translator.translate(text);
+      translationCache.set(text, result);
+      return result;
+    } catch (e) {
+      return text;
+    }
+  }
+
+  // Elements carrying data-autotranslate="<original English>" get
+  // patched in place once their translation resolves. Safe to call
+  // repeatedly; it no-ops in English and skips anything already
+  // translated or since replaced by a fresh render.
+  function runAutoTranslate() {
+    if (lang !== "id") return;
+    document.querySelectorAll("[data-autotranslate]").forEach((el) => {
+      const original = el.dataset.autotranslate;
+      nativeTranslate(original).then((translated) => {
+        if (lang === "id" && el.isConnected && el.dataset.autotranslate === original) {
+          el.textContent = translated;
+        }
+      });
+    });
+  }
+
   function renderTeam() {
     document.getElementById("teamGrid").innerHTML = DATA.team.map(m => `
       <div class="team-card fade-in-up visible">
@@ -130,14 +193,15 @@
           : `<div class="team-photo"></div>`}
         <div class="team-card-body">
           <h3>${esc(m.name)}</h3>
-          <div class="team-role">${esc(m.role)}</div>
-          <p class="team-desc">${esc(m.desc)}</p>
+          <div class="team-role" data-autotranslate="${esc(m.role)}">${esc(m.role)}</div>
+          <p class="team-desc" data-autotranslate="${esc(m.desc)}">${esc(m.desc)}</p>
           <div class="team-socials">
             <a href="${esc(m.ig || '#')}" aria-label="${esc(m.name)} Instagram">Instagram</a>
             <a href="${esc(m.linkedin || '#')}" aria-label="${esc(m.name)} LinkedIn">LinkedIn</a>
           </div>
         </div>
       </div>`).join("");
+    runAutoTranslate();
   }
 
   function renderPartners() {
@@ -173,8 +237,9 @@
     document.getElementById("galleryGrid").innerHTML = DATA.gallery.map(g => `
       <div class="masonry-item fade-in-up visible">
         <img loading="lazy" src="${g.img || placeholderImg()}" alt="${esc(g.caption)}">
-        <div class="masonry-caption">${esc(g.caption)}</div>
+        <div class="masonry-caption" data-autotranslate="${esc(g.caption)}">${esc(g.caption)}</div>
       </div>`).join("");
+    runAutoTranslate();
   }
 
   function placeholderImg() {
@@ -339,9 +404,10 @@
     document.documentElement.setAttribute("lang", lang === "id" ? "id" : "en");
     const btn = document.getElementById("langToggle");
     if (btn) {
-      // The button shows the language you'd switch TO, which is the
+      // The label shows the language you'd switch TO, which is the
       // clearer convention for a two-language switch.
-      btn.textContent = lang === "id" ? "EN" : "ID";
+      const labelEl = document.getElementById("langToggleLabel");
+      if (labelEl) labelEl.textContent = lang === "id" ? "EN" : "ID";
       btn.setAttribute("aria-label",
         lang === "id" ? "Switch to English" : "Ganti ke Bahasa Indonesia");
     }
@@ -354,6 +420,7 @@
       L.setLang(lang);
       applyStaticStrings();
       renderAll();
+      runAutoTranslate();
     });
   }
 
@@ -463,6 +530,16 @@
     });
   }
 
+  // A one-off event is "past" once its date and time have actually
+  // elapsed. A recurring event is never past in this sense; it keeps
+  // coming back, so the NEXT occurrence is what matters, not the
+  // original date it was created on.
+  function isEventPast(e) {
+    if (e.recurring && e.recurring !== "none") return false;
+    const eventEnd = new Date(e.date + "T" + (e.time || "23:59"));
+    return eventEnd < new Date();
+  }
+
   function renderCalendar() {
     const label = document.getElementById("calendarLabel");
     const grid = document.getElementById("calendarGrid");
@@ -482,6 +559,9 @@
       const evs = eventsForDate(key);
       const isToday = key === todayKey;
       const isSelected = key === selectedDate;
+      // A whole day reads as "past" once its date is before today, so
+      // the eye can skip it at a glance when scanning for what's next.
+      const isPastDay = key < todayKey;
       // A day with events is filled with that event's own colour so it reads
       // as a solid block at a glance, not a dot you have to hunt for. With
       // several events the cell is split into colour bands, one per event.
@@ -498,7 +578,7 @@
         blockStyle = ` style="--day-bg:linear-gradient(135deg, ${bands})"`;
         countBadge = `<span class="cal-count">${evs.length}</span>`;
       }
-      html += `<button type="button" class="cal-day ${evs.length ? "filled" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}"${blockStyle} data-key="${key}" role="gridcell" aria-label="${key}${evs.length ? ', ' + evs.length + ' events' : ''}">
+      html += `<button type="button" class="cal-day ${evs.length ? "filled" : ""} ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${isPastDay ? "past-day" : ""}"${blockStyle} data-key="${key}" role="gridcell" aria-label="${key}${evs.length ? ', ' + evs.length + ' events' : ''}">
         <span class="cal-num">${d}</span>${countBadge}
       </button>`;
     }
@@ -815,15 +895,22 @@
 
     const evs = eventsForDate(selectedDate);
     list.innerHTML = evs.length
-      ? evs.map(e => `
-        <div class="day-event" style="border-color:${e.color}">
-          <strong>${esc(e.title)}</strong>
+      ? evs.map(e => {
+          const past = isEventPast(e);
+          return `
+        <div class="day-event ${past ? "day-event-past" : ""}" style="border-color:${e.color}">
+          <div class="day-event-head">
+            <strong>${esc(e.title)}</strong>
+            ${past ? `<span class="past-badge">${esc(L.t("event_passed", lang))}</span>` : ""}
+          </div>
           ${e.time ? esc(e.time) + " · " : ""}${esc(e.location || "")}
           ${renderTags(e)}
-          <div>${esc(e.desc || "")}</div>
-          ${renderRegisterBtn(e)}
-        </div>`).join("")
+          <div data-autotranslate="${esc(e.desc || "")}">${esc(e.desc || "")}</div>
+          ${past ? "" : renderRegisterBtn(e)}
+        </div>`;
+        }).join("")
       : `<p class="day-empty-msg">${esc(L.t("no_events_day", lang))}</p>`;
+    runAutoTranslate();
   }
 
   document.getElementById("prevMonth").addEventListener("click", () => {
@@ -852,7 +939,6 @@
         <div class="countdown"></div>
         ${renderRegisterBtn(e) || `<a href="#contact" class="btn btn-secondary btn-sm">${esc(L.t("register", lang))}</a>`}
       </div>`).join("") || `<p class="empty-note">${esc(L.t("no_upcoming", lang))}</p>`;
-
     updateCountdowns();
   }
 
@@ -885,10 +971,11 @@
     vp.innerHTML = DATA.testimonials.map((t, i) => `
       <div class="testimonial-slide ${i === testiIndex ? "active" : ""}">
         ${t.photo ? `<img class="testi-photo" src="${esc(t.photo)}" alt="${esc(t.name)}">` : `<div class="testi-photo" style="margin:0 auto 14px;"></div>`}
-        <p class="testi-quote">&ldquo;${esc(t.review)}&rdquo;</p>
+        <p class="testi-quote" data-autotranslate="${esc(t.review)}">&ldquo;${esc(t.review)}&rdquo;</p>
         <div class="testi-name">${esc(t.name)}</div>
         <div class="testi-school">${esc(t.school)}</div>
       </div>`).join("");
+    runAutoTranslate();
 
     dots.innerHTML = DATA.testimonials.map((_, i) => `<button class="${i === testiIndex ? "active" : ""}" data-i="${i}" aria-label="Go to testimonial ${i + 1}"></button>`).join("");
     dots.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { testiIndex = Number(b.dataset.i); renderTestimonials(); }));
