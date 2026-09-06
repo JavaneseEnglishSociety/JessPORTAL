@@ -213,6 +213,7 @@ function normalizeData(data) {
     date: n.date || "",
     body: n.body || "",
     image: n.image || "",
+    video: n.video || "",
     published: n.published !== false,
     title_id: n.title_id || "",
     body_id: n.body_id || ""
@@ -313,7 +314,7 @@ function setLocalCache(data) {
  * if it fails, NOTHING in the module runs, not even the fallback).
  * ------------------------------------------------------------------ */
 let firebaseReady = false;
-let db, auth, fsFns, authFns;
+let db, auth, fsFns, authFns, storage, storageFns;
 
 async function trySetupFirebase() {
   const cfg = window.FIREBASE_CONFIG;
@@ -322,16 +323,19 @@ async function trySetupFirebase() {
     return false;
   }
   try {
-    const [{ initializeApp }, firestoreMod, authMod] = await Promise.all([
+    const [{ initializeApp }, firestoreMod, authMod, storageMod] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js")
+      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js")
     ]);
     const app = initializeApp(cfg);
     fsFns = firestoreMod;
     authFns = authMod;
+    storageFns = storageMod;
     db = firestoreMod.getFirestore(app);
     auth = authMod.getAuth(app);
+    storage = storageMod.getStorage(app);
     return true;
   } catch (e) {
     console.warn("JESS: Firebase could not be loaded or initialized. Running in local-only mode.", e);
@@ -402,16 +406,31 @@ async function loadOnce() {
  * SAVE (admin only — Firestore security rules require an
  * authenticated user for writes)
  * ------------------------------------------------------------------ */
+let lastSaveError = null;
+
 async function saveData(data) {
   setLocalCache(data);
   if (!firebaseReady) return false;
   try {
     await fsFns.setDoc(siteDocRef(), data);
+    lastSaveError = null;
     return true;
   } catch (e) {
     console.warn("JESS: Firestore save failed — change was kept locally only.", e);
+    lastSaveError = e;
     return false;
   }
+}
+
+// Lets admin.js build a specific error message after a failed save,
+// instead of only ever guessing "you may be signed out" — the actual
+// most common cause in practice is the site's single Firestore
+// document (every photo, logo, and now every news image all share
+// ONE document with a hard 1MB total limit) going over that limit,
+// which surfaces as a distinct Firestore error, not a permission or
+// connectivity problem at all.
+function getLastSaveError() {
+  return lastSaveError;
 }
 
 /* ------------------------------------------------------------------ *
@@ -457,7 +476,7 @@ const UI_STRINGS = {
     reg_fail: "Couldn't send that. Please check your connection and try again.",
     required_fields: "Please fill in your name and email.",
     days: "Days", hrs: "Hrs", min: "Min", live: "Live",
-    read_more: "Read more", close: "Close",
+    read_more: "Read more", watch_video: "Watch video", close: "Close",
     footer_explore: "Explore", footer_involved: "Get involved",
     staff_login: "Staff login", privacy: "Privacy", terms: "Terms",
     form_name: "Your name", form_email: "Email", form_message: "Message",
@@ -510,7 +529,7 @@ const UI_STRINGS = {
     reg_fail: "Gagal mengirim, periksa koneksi lalu coba lagi.",
     required_fields: "Mohon isi nama dan email kamu.",
     days: "Hari", hrs: "Jam", min: "Mnt", live: "Berlangsung",
-    read_more: "Selengkapnya", close: "Tutup",
+    read_more: "Selengkapnya", watch_video: "Tonton video", close: "Tutup",
     footer_explore: "Jelajahi", footer_involved: "Ikut terlibat",
     staff_login: "Masuk pengurus", privacy: "Privasi", terms: "Ketentuan",
     form_name: "Nama kamu", form_email: "Email", form_message: "Pesan",
@@ -985,6 +1004,54 @@ async function clearStalePresence(olderThanMs = 24 * 60 * 60 * 1000) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * VIDEO UPLOAD (Firebase Storage)
+ *
+ * Video is stored differently from every photo elsewhere on this site.
+ * Team photos, gallery images, partner logos, and news cover images are
+ * all compressed and saved as base64 text directly inside the single
+ * jess/site Firestore document — but that document has a hard 1MB
+ * limit shared across everything on the site, and even a few seconds
+ * of video easily exceeds 1MB on its own. So video files go to Firebase
+ * Storage instead (a separate product built for actual files), and only
+ * the resulting short download URL — a few dozen characters — gets
+ * saved into the news post itself.
+ *
+ * This needs Storage enabled once in the Firebase Console (Build >
+ * Storage > Get started) and its own storage.rules published, the same
+ * way Firestore needed firestore.rules. See storage.rules in this
+ * project for the exact rules to publish.
+ * ------------------------------------------------------------------ */
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024; // 60MB — generous for a short clip, small enough to upload on an average connection without timing out
+
+function uploadVideoFile(file, onProgress) {
+  if (!firebaseReady) return Promise.reject(new Error("Firebase is not configured yet."));
+  if (!storage || !storageFns) return Promise.reject(new Error("Firebase Storage isn't set up yet — see storage.rules and firebase-config.js."));
+  if (!file.type.startsWith("video/")) return Promise.reject(new Error("That file isn't a video."));
+  if (file.size > MAX_VIDEO_BYTES) return Promise.reject(new Error("That video is larger than 60MB — trim it down or compress it first."));
+
+  const path = "news-videos/" + Date.now() + "-" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const fileRef = storageFns.ref(storage, path);
+  const task = storageFns.uploadBytesResumable(fileRef, file);
+
+  return new Promise((resolve, reject) => {
+    task.on("state_changed",
+      (snapshot) => {
+        if (onProgress) onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+      },
+      (err) => reject(err),
+      async () => {
+        try {
+          const url = await storageFns.getDownloadURL(task.snapshot.ref);
+          resolve(url);
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+}
+
 window.JESSData = {
   STORAGE_KEY, uid, defaultData,
   subscribe, loadOnce, saveData,
@@ -994,6 +1061,7 @@ window.JESSData = {
   submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication, DEPARTMENTS,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
+  uploadVideoFile, getLastSaveError,
   firebaseReady: () => firebaseReady
 };
 

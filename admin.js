@@ -47,6 +47,27 @@
     saveStatusEl.textContent = isDirty ? "You have unsaved changes." : "";
   }
 
+  // Reads the actual Firestore error from the failed write (see
+  // getLastSaveError in data.js) and turns it into a message that says
+  // what's actually wrong, instead of always guessing "signed out or
+  // offline" — which used to be the only message shown here, even
+  // though the far more common cause in practice is the site's single
+  // shared document going over Firestore's 1MB limit.
+  function buildSaveFailureMessage() {
+    const err = window.JESSData.getLastSaveError && window.JESSData.getLastSaveError();
+    const text = ((err && err.message) || "").toLowerCase();
+    if (text.includes("1048576") || text.includes("exceed") || (text.includes("size") && text.includes("document"))) {
+      return "⚠️ Not saved — the site's content is too large for one Firestore document (1MB limit, shared by every photo, logo, and news image). Try a smaller or fewer images, especially newly-added ones.";
+    }
+    if (err && err.code === "permission-denied") {
+      return "⚠️ Not saved — Firestore rejected this write. Check that firestore.rules has actually been published in Firebase Console.";
+    }
+    if (!navigator.onLine) {
+      return "⚠️ Not saved — you appear to be offline. Reconnect and try again.";
+    }
+    return "⚠️ Not saved to Firestore. Check your connection and try again — see the browser console for the exact error.";
+  }
+
   // The actual network write — only ever called from the Save button now.
   function persistNow() {
     if (!DATA || isSaving) return Promise.resolve(false);
@@ -58,7 +79,7 @@
         const now = Date.now();
         if (now - lastSaveFailureToastAt > 4000) {
           lastSaveFailureToastAt = now;
-          toast("⚠️ Not saved to Firestore — you may be signed out, or offline. Refresh and log in again.");
+          toast(buildSaveFailureMessage());
         }
         // Leave isDirty true — the edits are still only in memory/local
         // cache, and the button should keep inviting a retry.
@@ -1188,7 +1209,7 @@
   function panelNews(root) {
     root.innerHTML = `
       <h2>News</h2>
-      <p class="panel-hint">Short updates shown on the homepage, newest first. Untick "Published" to draft a post without showing it publicly.</p>
+      <p class="panel-hint">Short updates shown on the homepage, newest first. Untick "Published" to draft a post without showing it publicly. Video needs Firebase Storage enabled once in the console (see storage.rules) before uploads will work; pasting a YouTube or Vimeo link works immediately with no setup.</p>
       <div class="admin-card-list" id="newsList"></div>
       <button class="btn btn-outline" id="addNews">+ Add post</button>
     `;
@@ -1206,6 +1227,18 @@
             <input type="file" accept="image/*" data-photo>
           </div>
           ${n.image ? `<div class="news-image-preview"><img src="${esc(n.image)}" alt=""></div><button type="button" class="btn btn-outline btn-sm" data-remove-image>Remove image</button>` : ""}
+
+          <div class="field-group">
+            <label>Video <span class="opt">optional — paste a link, or upload a file below</span></label>
+            <input data-f="video" value="${esc(n.video || "")}" placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/...">
+          </div>
+          <div class="video-upload-row">
+            <input type="file" accept="video/*" data-video-upload>
+            <div class="video-upload-progress" data-video-progress hidden>
+              <div class="video-upload-bar" data-video-bar></div>
+            </div>
+          </div>
+          ${n.video ? `<button type="button" class="btn btn-outline btn-sm" data-remove-video>Remove video</button>` : ""}
           <div class="field-group">
             <label>Title (Bahasa Indonesia) <span class="opt">optional</span></label>
             <input data-f="title_id" value="${esc(n.title_id || "")}" placeholder="Leave blank to reuse the English title">
@@ -1235,7 +1268,7 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing image…");
-          compressImage(file, 900, 0.8).then((url) => {
+          compressImage(file, 640, 0.72).then((url) => {
             item.image = url;
             markDirty(); draw();
             toast("Image added. Click \"Save Changes\" to publish.");
@@ -1244,6 +1277,29 @@
         const removeBtn = card.querySelector("[data-remove-image]");
         if (removeBtn) removeBtn.addEventListener("click", () => {
           item.image = ""; markDirty(); draw();
+        });
+        const removeVideoBtn = card.querySelector("[data-remove-video]");
+        if (removeVideoBtn) removeVideoBtn.addEventListener("click", () => {
+          item.video = ""; markDirty(); draw();
+        });
+        card.querySelector("[data-video-upload]").addEventListener("change", (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const progressWrap = card.querySelector("[data-video-progress]");
+          const bar = card.querySelector("[data-video-bar]");
+          progressWrap.hidden = false;
+          bar.style.width = "0%";
+          window.JESSData.uploadVideoFile(file, (pct) => { bar.style.width = pct + "%"; })
+            .then((url) => {
+              item.video = url;
+              markDirty(); draw();
+              toast("Video uploaded. Click \"Save Changes\" to publish.");
+            })
+            .catch((err) => {
+              console.warn("JESS: video upload failed.", err);
+              progressWrap.hidden = true;
+              toast(err && err.message ? err.message : "Could not upload that video.");
+            });
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           if (!confirm("Remove this post?")) return;
@@ -1256,7 +1312,7 @@
     root.querySelector("#addNews").addEventListener("click", () => {
       const today = new Date();
       const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", image: "", published: true, title_id: "", body_id: "" });
+      DATA.news.push({ id: uid(), title: "New post", date: iso, body: "", image: "", video: "", published: true, title_id: "", body_id: "" });
       markDirty(); draw();
     });
   }
