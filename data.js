@@ -35,32 +35,32 @@ function rawDefaultData() {
       { id: uid(), title: "Take your first class", desc: "You will co-teach with an experienced volunteer before leading on your own." }
     ],
     sectionText: {
-      about_marker: "About JESS", about_marker_id: "",
-      about_heading: "Peer teaching, at the scale of a movement.", about_heading_id: "",
-      vision_marker: "Our vision", vision_marker_id: "",
-      vision_heading: "Where we are going", vision_heading_id: "",
-      mission_marker: "Our mission", mission_marker_id: "",
-      mission_heading: "How we get there", mission_heading_id: "",
-      programs_marker: "Programs", programs_marker_id: "",
-      programs_heading: "What we run.", programs_heading_id: "",
-      events_marker: "Calendar", events_marker_id: "",
-      events_heading: "What is coming up.", events_heading_id: "",
-      team_marker: "The team", team_marker_id: "",
-      team_heading: "Who runs JESS.", team_heading_id: "",
-      volunteer_marker: "Volunteer", volunteer_marker_id: "",
-      volunteer_heading: "Teach the class you wish you had had.", volunteer_heading_id: "",
-      partners_marker: "Partners", partners_marker_id: "",
-      partners_heading: "Schools and organisations we work with.", partners_heading_id: "",
-      news_marker: "News", news_marker_id: "",
-      news_heading: "Latest from JESS.", news_heading_id: "",
-      testimonials_marker: "In their words", testimonials_marker_id: "",
-      testimonials_heading: "What students say.", testimonials_heading_id: "",
-      gallery_marker: "Gallery", gallery_marker_id: "",
-      gallery_heading: "Moments from our classes.", gallery_heading_id: "",
-      faq_marker: "Questions", faq_marker_id: "",
-      faq_heading: "Things people ask us.", faq_heading_id: "",
-      contact_marker: "Contact", contact_marker_id: "",
-      contact_heading: "Get in touch.", contact_heading_id: ""
+      about_marker: "About JESS", about_marker_id: "Tentang JESS",
+      about_heading: "Peer teaching, at the scale of a movement.", about_heading_id: "Belajar dari sesama pelajar, dalam skala gerakan.",
+      vision_marker: "Our vision", vision_marker_id: "Visi kami",
+      vision_heading: "Where we are going", vision_heading_id: "Arah kami",
+      mission_marker: "Our mission", mission_marker_id: "Misi kami",
+      mission_heading: "How we get there", mission_heading_id: "Cara kami mewujudkannya",
+      programs_marker: "Programs", programs_marker_id: "Program",
+      programs_heading: "What we run.", programs_heading_id: "Yang kami jalankan.",
+      events_marker: "Calendar", events_marker_id: "Kalender",
+      events_heading: "What is coming up.", events_heading_id: "Yang akan datang.",
+      team_marker: "The team", team_marker_id: "Tim kami",
+      team_heading: "Who runs JESS.", team_heading_id: "Pengurus JESS.",
+      volunteer_marker: "Volunteer", volunteer_marker_id: "Relawan",
+      volunteer_heading: "Teach the class you wish you had had.", volunteer_heading_id: "Ajarkan kelas yang dulu kamu inginkan.",
+      partners_marker: "Partners", partners_marker_id: "Mitra",
+      partners_heading: "Schools and organisations we work with.", partners_heading_id: "Sekolah dan organisasi mitra kami.",
+      news_marker: "News", news_marker_id: "Berita",
+      news_heading: "Latest from JESS.", news_heading_id: "Kabar terbaru dari JESS.",
+      testimonials_marker: "In their words", testimonials_marker_id: "Kata mereka",
+      testimonials_heading: "What students say.", testimonials_heading_id: "Kata para siswa.",
+      gallery_marker: "Gallery", gallery_marker_id: "Galeri",
+      gallery_heading: "Moments from our classes.", gallery_heading_id: "Momen dari kelas kami.",
+      faq_marker: "Questions", faq_marker_id: "Pertanyaan",
+      faq_heading: "Things people ask us.", faq_heading_id: "Pertanyaan yang sering diajukan.",
+      contact_marker: "Contact", contact_marker_id: "Kontak",
+      contact_heading: "Get in touch.", contact_heading_id: "Hubungi kami."
     },
     hero: {
       title: "Making English Accessible For Everyone.",
@@ -265,7 +265,18 @@ function normalizeData(data) {
     title_id: v.title_id || "", desc_id: v.desc_id || ""
   }));
   const defaultSectionText = rawDefaultData().sectionText;
-  d.sectionText = Object.assign({}, defaultSectionText, d.sectionText || {});
+  const savedSectionText = d.sectionText || {};
+  d.sectionText = Object.assign({}, defaultSectionText);
+  // Only an actually-filled-in value from a saved document overrides the
+  // shipped default. This matters specifically for the "_id" fields: an
+  // earlier version of this file shipped them as empty strings, and a
+  // site that saved once while that was live would otherwise have that
+  // empty value silently override the real Indonesian text added here,
+  // even though the admin never deliberately cleared anything.
+  Object.keys(savedSectionText).forEach((key) => {
+    const val = savedSectionText[key];
+    if (typeof val === "string" && val.trim() !== "") d.sectionText[key] = val;
+  });
 
   return d;
 }
