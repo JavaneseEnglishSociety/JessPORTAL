@@ -124,6 +124,33 @@
       </div>`).join("");
   }
 
+  // A single configurable banner linking out to JessEDU. Entirely hidden
+  // (not just empty) when unpublished, since it's meant to be switchable
+  // off completely rather than shown as a blank section.
+  function renderJessEdu() {
+    const section = document.getElementById("jessedu-link");
+    if (!section) return;
+    const j = DATA.jessEdu;
+    if (!j || j.published === false) {
+      section.hidden = true;
+      section.innerHTML = "";
+      return;
+    }
+    section.hidden = false;
+    section.innerHTML = `
+      <div class="section-inner">
+        <div class="jessedu-card fade-in-up visible">
+          ${j.image ? `<div class="jessedu-image"><img src="${esc(j.image)}" alt="" loading="lazy"></div>` : ""}
+          <div class="jessedu-body">
+            <span class="marker">${autoField(j, "marker")}</span>
+            <h2>${autoField(j, "heading")}</h2>
+            <p class="lede">${autoField(j, "description")}</p>
+            <a href="${esc(j.url || "#")}" class="btn btn-primary" target="_blank" rel="noopener">${autoField(j, "buttonText")}</a>
+          </div>
+        </div>
+      </div>`;
+  }
+
   /* ---- Native browser translation (progressive enhancement) --------- *
    * Chrome and Edge ship an on-device Translator API (self.Translator)
    * that works entirely in the browser, no server, no API key, and no
@@ -313,6 +340,23 @@
    * public site but stay editable in the admin panel, so a post can be
    * drafted before it goes live.
    * ------------------------------------------------------------------- */
+  // Turns a pasted URL into embeddable video markup. YouTube and Vimeo
+  // links become a responsive iframe embed; anything else is assumed to
+  // be a direct file link (e.g. a Firebase Storage download URL from
+  // the admin's upload button) and becomes a native <video> player.
+  function videoEmbedHtml(url) {
+    if (!url) return "";
+    const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+    if (yt) {
+      return `<div class="video-embed"><iframe src="https://www.youtube.com/embed/${yt[1]}" title="video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
+    }
+    const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    if (vimeo) {
+      return `<div class="video-embed"><iframe src="https://player.vimeo.com/video/${vimeo[1]}" title="video" frameborder="0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
+    }
+    return `<div class="video-embed"><video controls preload="metadata" src="${esc(url)}"></video></div>`;
+  }
+
   function renderNews() {
     const grid = document.getElementById("newsGrid");
     if (!grid) return;
@@ -337,13 +381,15 @@
         : "";
       return `
       <article class="news-card fade-in-up visible">
-        ${n.image ? `<div class="news-image"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}" loading="lazy"></div>` : ""}
+        ${n.image
+          ? `<div class="news-image">${n.video ? '<span class="news-video-badge">▶ Video</span>' : ""}<img src="${esc(n.image)}" alt="${esc(field(n, "title"))}" loading="lazy"></div>`
+          : (n.video ? `<div class="news-image news-video-cover"><span class="news-play-icon">▶</span></div>` : "")}
         <div class="news-card-body">
           ${dateLabel ? `<div class="news-date">${esc(dateLabel)}</div>` : ""}
           <h3>${autoField(n, "title")}</h3>
           <p class="news-body">${shortHtml}</p>
-          ${body.length > 180
-            ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(L.t("read_more", lang))}</button>`
+          ${(body.length > 180 || n.video)
+            ? `<button type="button" class="news-more" data-news="${esc(n.id)}">${esc(n.video ? L.t("watch_video", lang) : L.t("read_more", lang))}</button>`
             : ""}
         </div>
       </article>`;
@@ -361,7 +407,9 @@
     overlay.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true">
         <button class="modal-close" aria-label="${esc(L.t("close", lang))}">&times;</button>
-        ${n.image ? `<div class="news-image news-image-modal"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}"></div>` : ""}
+        ${n.video
+          ? videoEmbedHtml(n.video)
+          : (n.image ? `<div class="news-image news-image-modal"><img src="${esc(n.image)}" alt="${esc(field(n, "title"))}"></div>` : "")}
         <h3>${autoField(n, "title")}</h3>
         ${n.date ? `<p class="news-date">${esc(n.date)}</p>` : ""}
         <p style="white-space:pre-wrap;">${autoField(n, "body")}</p>
@@ -415,6 +463,7 @@
     renderMission();
     renderStats();
     renderPrograms();
+    renderJessEdu();
     renderVolunteerSteps();
     renderTeam();
     renderPartners();

@@ -34,6 +34,16 @@ function rawDefaultData() {
       { id: uid(), title: "Join teacher training", desc: "A short orientation covering lesson structure, classroom confidence, and our materials." },
       { id: uid(), title: "Take your first class", desc: "You will co-teach with an experienced volunteer before leading on your own." }
     ],
+    jessEdu: {
+      published: true,
+      marker: "Free learning materials",
+      heading: "Keep learning with JessEDU.",
+      description: "JessEDU is JESS's own learning site: free lessons, practice activities, and a placement quiz so you can start at the right level, all built by the same team behind these EduTrips.",
+      buttonText: "Visit JessEDU",
+      url: "https://javaneseenglishsociety.github.io/JessEDU/",
+      image: "",
+      marker_id: "", heading_id: "", description_id: "", buttonText_id: ""
+    },
     sectionText: {
       about_marker: "About JESS", about_marker_id: "Tentang JESS",
       about_heading: "Peer teaching, at the scale of a movement.", about_heading_id: "Belajar dari sesama pelajar, dalam skala gerakan.",
@@ -265,6 +275,12 @@ function normalizeData(data) {
     id: v.id || uid(), title: v.title || "", desc: v.desc || "",
     title_id: v.title_id || "", desc_id: v.desc_id || ""
   }));
+
+  // Older saved documents predate the JessEDU cross-link section
+  // entirely; fill in the shipped default rather than leaving it
+  // undefined, but keep anything the admin has already customised.
+  d.jessEdu = Object.assign({}, rawDefaultData().jessEdu, d.jessEdu || {});
+
   const defaultSectionText = rawDefaultData().sectionText;
   const savedSectionText = d.sectionText || {};
   d.sectionText = Object.assign({}, defaultSectionText);

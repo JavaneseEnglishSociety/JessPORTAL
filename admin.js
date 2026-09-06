@@ -179,6 +179,7 @@
           <button data-panel="gallery">Gallery</button>
           <button data-panel="partners">Partners</button>
           <button data-panel="faq">FAQ</button>
+          <button data-panel="jessedu">JessEDU Link</button>
           <button data-panel="contact">Contact &amp; footer</button>
           <button data-panel="theme">Theme</button>
           <button data-panel="data">Data</button>
@@ -307,6 +308,7 @@
       news: panelNews,
       applications: panelApplications,
       registrations: panelRegistrations,
+      jessedu: panelJessEdu,
       contact: panelContact,
       theme: panelTheme,
       data: panelData
@@ -1542,6 +1544,72 @@
       const loading = root.querySelector("#regLoading");
       if (loading) loading.remove();
       draw();
+    });
+  }
+
+  /* ---- Contact & footer panel ---- */
+  /* ---- JessEDU cross-link panel ---- */
+  function panelJessEdu(root) {
+    const j = DATA.jessEdu;
+    root.innerHTML = `
+      <h2>JessEDU Link</h2>
+      <p class="panel-hint">A banner on the homepage linking out to JessEDU, your free-materials learning site. Untick "Show this section" to hide it completely without losing what you've written.</p>
+
+      <label class="switch-row">
+        <input type="checkbox" id="jePublished" ${j.published !== false ? "checked" : ""}>
+        <span>Show this section on the site</span>
+      </label>
+
+      <div class="field-group"><label>Label</label><input id="jeMarker" value="${esc(j.marker)}" placeholder="e.g. Free learning materials"></div>
+      <div class="field-group"><label>Heading</label><input id="jeHeading" value="${esc(j.heading)}"></div>
+      <div class="field-group"><label>Description</label><textarea id="jeDesc" rows="3">${esc(j.description)}</textarea></div>
+      <div class="field-row">
+        <div class="field-group"><label>Button text</label><input id="jeBtnText" value="${esc(j.buttonText)}"></div>
+        <div class="field-group"><label>Link URL</label><input id="jeUrl" value="${esc(j.url)}"></div>
+      </div>
+
+      <div class="field-group">
+        <label>Image <span class="opt">optional</span></label>
+        <input type="file" accept="image/*" id="jePhoto">
+      </div>
+      ${j.image ? `<div class="news-image-preview"><img src="${esc(j.image)}" alt=""></div><button type="button" class="btn btn-outline btn-sm" id="jeRemoveImage">Remove image</button>` : ""}
+
+      <h3 style="font-size:1.05rem;margin:28px 0 4px;">Bahasa Indonesia</h3>
+      <p class="panel-hint">Optional — leave blank to reuse the English text above.</p>
+      <div class="field-group"><label>Label (ID)</label><input id="jeMarkerId" value="${esc(j.marker_id || "")}"></div>
+      <div class="field-group"><label>Heading (ID)</label><input id="jeHeadingId" value="${esc(j.heading_id || "")}"></div>
+      <div class="field-group"><label>Description (ID)</label><textarea id="jeDescId" rows="3">${esc(j.description_id || "")}</textarea></div>
+      <div class="field-group"><label>Button text (ID)</label><input id="jeBtnTextId" value="${esc(j.buttonText_id || "")}"></div>
+    `;
+    const bind = (id, apply) => {
+      root.querySelector(id).addEventListener("input", (e) => { apply(e.target.value); markDirty(); });
+    };
+    root.querySelector("#jePublished").addEventListener("change", (e) => {
+      DATA.jessEdu.published = e.target.checked; markDirty();
+    });
+    bind("#jeMarker", (v) => { DATA.jessEdu.marker = v; });
+    bind("#jeHeading", (v) => { DATA.jessEdu.heading = v; });
+    bind("#jeDesc", (v) => { DATA.jessEdu.description = v; });
+    bind("#jeBtnText", (v) => { DATA.jessEdu.buttonText = v; });
+    bind("#jeUrl", (v) => { DATA.jessEdu.url = v; });
+    bind("#jeMarkerId", (v) => { DATA.jessEdu.marker_id = v; });
+    bind("#jeHeadingId", (v) => { DATA.jessEdu.heading_id = v; });
+    bind("#jeDescId", (v) => { DATA.jessEdu.description_id = v; });
+    bind("#jeBtnTextId", (v) => { DATA.jessEdu.buttonText_id = v; });
+
+    root.querySelector("#jePhoto").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      toast("Processing image…");
+      compressImage(file, 640, 0.75).then((url) => {
+        DATA.jessEdu.image = url;
+        markDirty(); renderAdminPanel("jessedu");
+        toast("Image added. Click \"Save Changes\" to publish.");
+      }).catch(() => toast("Could not process that image. Try a different file."));
+    });
+    const removeImg = root.querySelector("#jeRemoveImage");
+    if (removeImg) removeImg.addEventListener("click", () => {
+      DATA.jessEdu.image = ""; markDirty(); renderAdminPanel("jessedu");
     });
   }
 
