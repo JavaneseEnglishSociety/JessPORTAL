@@ -344,7 +344,10 @@ function normalizeData(data) {
     label: b.label || "",
     label_id: b.label_id || "",
     color: b.color || "green",
-    value: typeof b.value === "number" ? b.value : (b.value || 0),
+    // value holds a number for most chart types but plain text for the
+    // plainText type -- only default when it's genuinely missing, never
+    // coerce an intentionally emptied string into the number 0.
+    value: b.value === undefined || b.value === null ? 0 : b.value,
     suffix: b.suffix || "",
     goal: b.goal, max: b.max, previous: b.previous,
     perIcon: b.perIcon, icon: b.icon,

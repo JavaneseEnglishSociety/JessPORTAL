@@ -809,7 +809,7 @@
       donut: "Donut chart", pie: "Pie chart", barsV: "Bar chart (vertical)", barsH: "Bar chart (horizontal)",
       ranked: "Ranked list", line: "Line chart", area: "Area chart", sparkline: "Sparkline",
       stacked: "Stacked bar", pictogram: "Pictogram (icons)", compare: "Before / after", heatgrid: "Activity grid",
-      timeline: "Timeline"
+      timeline: "Timeline", plainText: "Plain text"
     };
     // Families group the 17 types by which edit form they need, so one
     // form builder covers several chart types that share a shape.
@@ -826,6 +826,7 @@
     function impactDefaultFor(type) {
       const base = { id: uid(), type, label: "New " + (IMPACT_TYPE_LABEL[type] || type), label_id: "", color: "green" };
       if (type === "bigNumber") return Object.assign(base, { value: 0, suffix: "+" });
+      if (type === "plainText") return Object.assign(base, { value: "Write anything here — a quote, a fact, a short note." });
       if (type === "trend") return Object.assign(base, { value: 0, previous: 0, suffix: "" });
       if (type === "progress") return Object.assign(base, { value: 0, goal: 100 });
       if (type === "gauge") return Object.assign(base, { value: 0, max: 100, suffix: "%" });
@@ -847,6 +848,10 @@
           <div class="field-group"><label>Suffix</label><input data-f="suffix" value="${esc(b.suffix || "")}" placeholder="e.g. +"></div>
           <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
         </div>`;
+      if (b.type === "plainText") return `
+        <div class="field-row"><div class="field-group"><label>Text</label>
+          <textarea data-f="value" rows="3" style="width:100%;font:inherit;padding:8px;border:1px solid var(--color-border-soft,#DED5C4);border-radius:8px;">${esc(b.value || "")}</textarea>
+        </div></div>`;
       if (b.type === "trend") return `
         <div class="field-row">
           <div class="field-group"><label>Current value</label><input type="number" data-f="value" value="${b.value}"></div>
@@ -918,68 +923,25 @@
       root.querySelector("#impactSubtitle").value = imp.subtitle || "";
 
       root.querySelector("#impactList").innerHTML = imp.blocks.map((b, i) => `
-        <div class="admin-item-card impact-drag-card" data-i="${i}" draggable="false">
+        <div class="admin-item-card" data-i="${i}">
           <div class="field-row">
-            <div class="field-group impact-drag-handle-group" style="flex:0 0 auto;">
-              <label>&nbsp;</label>
-              <span class="impact-drag-handle" title="Drag to reorder">⠿</span>
-            </div>
             <div class="field-group" style="flex:0 0 auto;"><label>Type</label>
               <input value="${esc(IMPACT_TYPE_LABEL[b.type] || b.type)}" disabled style="opacity:.7;"></div>
             <div class="field-group"><label>Label</label><input data-f="label" value="${esc(b.label || "")}"></div>
           </div>
           ${impactFieldsHtml(b)}
           <div class="admin-item-actions">
+            ${i > 0 ? '<button data-move-up>↑ Move up</button>' : ""}
+            ${i < imp.blocks.length - 1 ? '<button data-move-down>↓ Move down</button>' : ""}
             <button class="danger" data-del>Remove</button>
           </div>
         </div>`).join("");
-
-      // Drag-to-reorder: HTML5 native drag and drop, no library. Dragging
-      // a card over another swaps their position in DATA.impact.blocks
-      // immediately (so the on-screen order and the saved order can never
-      // drift apart), then redraws once on drop.
-      let dragFromIndex = null;
-      const listEl = root.querySelector("#impactList");
-      listEl.querySelectorAll(".impact-drag-card").forEach((card) => {
-        // draggable stays "false" until the mouse actually presses down
-        // on the handle, so grabbing text inside a label/value input to
-        // edit it never gets mistaken for starting a drag.
-        const handle = card.querySelector(".impact-drag-handle");
-        handle.addEventListener("mousedown", () => card.setAttribute("draggable", "true"));
-        handle.addEventListener("touchstart", () => card.setAttribute("draggable", "true"), { passive: true });
-        card.addEventListener("dragstart", (e) => {
-          dragFromIndex = Number(card.dataset.i);
-          card.classList.add("is-dragging");
-          e.dataTransfer.effectAllowed = "move";
-        });
-        card.addEventListener("dragend", () => {
-          card.classList.remove("is-dragging");
-          card.setAttribute("draggable", "false");
-          listEl.querySelectorAll(".impact-drag-card").forEach((c) => c.classList.remove("drag-over"));
-        });
-        card.addEventListener("dragover", (e) => {
-          e.preventDefault();
-          if (Number(card.dataset.i) === dragFromIndex) return;
-          card.classList.add("drag-over");
-        });
-        card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
-        card.addEventListener("drop", (e) => {
-          e.preventDefault();
-          const toIndex = Number(card.dataset.i);
-          if (dragFromIndex === null || toIndex === dragFromIndex) return;
-          const [moved] = imp.blocks.splice(dragFromIndex, 1);
-          imp.blocks.splice(toIndex, 0, moved);
-          dragFromIndex = null;
-          markDirty();
-          drawImpact();
-        });
-      });
 
       root.querySelectorAll("#impactList .admin-item-card").forEach((card) => {
         const i = Number(card.dataset.i);
         const b = imp.blocks[i];
 
-        card.querySelectorAll(":scope > .field-row input[data-f], :scope > .field-row select[data-f]").forEach((inp) => {
+        card.querySelectorAll(":scope > .field-row input[data-f], :scope > .field-row select[data-f], :scope > .field-row textarea[data-f]").forEach((inp) => {
           inp.addEventListener("input", () => {
             const raw = inp.value;
             b[inp.dataset.f] = inp.type === "number" ? Number(raw) : raw;
@@ -1015,6 +977,17 @@
           b.series.push(SERIES_COLOR_TYPES.includes(b.type)
             ? { label: "New", value: 1, color: "green" }
             : TIMELINE_TYPES.includes(b.type) ? { label: "New milestone", value: "2026" } : { label: "New", value: 1 });
+          markDirty(); drawImpact();
+        });
+
+        const upBtn = card.querySelector("[data-move-up]");
+        if (upBtn) upBtn.addEventListener("click", () => {
+          [imp.blocks[i - 1], imp.blocks[i]] = [imp.blocks[i], imp.blocks[i - 1]];
+          markDirty(); drawImpact();
+        });
+        const downBtn = card.querySelector("[data-move-down]");
+        if (downBtn) downBtn.addEventListener("click", () => {
+          [imp.blocks[i + 1], imp.blocks[i]] = [imp.blocks[i], imp.blocks[i + 1]];
           markDirty(); drawImpact();
         });
 

@@ -160,6 +160,12 @@
               style="color:${impactColor(b.color)}">0</div>`;
   }
 
+  function chartPlainText(b) {
+    // No number, no chart -- just a written statement (a quote, a fact,
+    // a short note) sitting in the same grid as the charts around it.
+    return `<p class="impact-text">${esc(b.value || "")}</p>`;
+  }
+
   function chartTrend(b) {
     const cur = Number(b.value) || 0, prev = Number(b.previous) || 0;
     const diff = cur - prev;
@@ -374,7 +380,7 @@
   }
 
   const IMPACT_BUILDERS = {
-    bigNumber: chartBigNumber, trend: chartTrend, progress: chartProgress, gauge: chartGauge,
+    bigNumber: chartBigNumber, plainText: chartPlainText, trend: chartTrend, progress: chartProgress, gauge: chartGauge,
     donut: chartDonut, pie: chartPie, barsV: chartBarsV, barsH: chartBarsH, ranked: chartRanked,
     line: chartLine, area: chartArea, sparkline: chartSparkline, stacked: chartStacked,
     pictogram: chartPictogram, compare: chartCompare, heatgrid: chartHeatgrid, timeline: chartTimeline

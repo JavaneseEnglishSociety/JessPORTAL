@@ -1489,15 +1489,4 @@ img.team-photo { object-fit: cover; }
 .impact-series-editor { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
 .impact-series-row { align-items: flex-end; padding: 8px; background: var(--color-page-soft, #F4EFE3); border-radius: 8px; }
 
-/* ---------- Drag-to-reorder (impact dashboard) ---------- */
-.impact-drag-handle-group { justify-content: flex-end; }
-.impact-drag-handle {
-  display: flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; font-size: 1.1rem; color: var(--color-text-gray, #6B7280);
-  cursor: grab; border-radius: 6px; user-select: none;
-  border: 1px solid var(--color-border-soft, #DED5C4);
-}
-.impact-drag-handle:active { cursor: grabbing; }
-.impact-drag-card { transition: transform 0.12s ease, opacity 0.12s ease; }
-.impact-drag-card.is-dragging { opacity: 0.4; }
-.impact-drag-card.drag-over { border-top: 3px solid var(--color-accent, #2F9E63); }
+.impact-text { font-size: 1rem; line-height: 1.6; color: var(--color-text, #17241C); margin: 0; }
