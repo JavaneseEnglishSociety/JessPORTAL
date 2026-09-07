@@ -219,27 +219,72 @@
   // several MB, so every image is resized and compressed client-side
   // before it's saved — this is what makes photo uploads actually work
   // reliably instead of silently failing once the document gets too big.
+  // Compresses a picked image down to a data URL.
+  //
+  // Rewritten to be robust on iPads specifically. Photos taken on an
+  // iPhone/iPad are HEIC by default, and very large camera images
+  // (12MP+) can exceed iOS Safari's canvas memory limits. The old
+  // version used a single FileReader + <img> path and, when that path
+  // failed, rejected with a vague error that the caller turned into
+  // "Could not process that image" -- which looks identical to nothing
+  // happening at all, and never explained why. This version tries
+  // createImageBitmap first (which decodes more formats, including
+  // HEIC on Safari, and handles large images far better), falls back to
+  // the old path, and reports the real reason on failure.
   function compressImage(file, maxDim = 480, quality = 0.75) {
-    return new Promise((resolve, reject) => {
-      if (!file.type.startsWith("image/")) { reject(new Error("Not an image file")); return; }
-      const reader = new FileReader();
-      reader.onerror = () => reject(reader.error);
-      reader.onload = () => {
-        const img = new Image();
-        img.onerror = () => reject(new Error("Could not read that image"));
-        img.onload = () => {
-          let { width, height } = img;
-          if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
-          else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
-          const canvas = document.createElement("canvas");
-          canvas.width = width; canvas.height = height;
-          canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL("image/jpeg", quality));
+    function drawToDataUrl(source, w, h) {
+      let { width, height } = { width: w, height: h };
+      if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+      else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("this browser could not open a drawing canvas");
+      ctx.drawImage(source, 0, 0, width, height);
+      const out = canvas.toDataURL("image/jpeg", quality);
+      if (!out || out === "data:," || out.length < 100) {
+        throw new Error("the image was too large for this device to process; try a smaller photo");
+      }
+      return out;
+    }
+
+    return (async () => {
+      if (!file) throw new Error("no file was selected");
+      if (file.type && !file.type.startsWith("image/") && !/\.(heic|heif)$/i.test(file.name || "")) {
+        throw new Error(`that file is "${file.type || "an unknown type"}", not an image`);
+      }
+
+      // Path 1: createImageBitmap — best support for HEIC and big photos.
+      if (typeof createImageBitmap === "function") {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const out = drawToDataUrl(bitmap, bitmap.width, bitmap.height);
+          if (bitmap.close) bitmap.close();
+          return out;
+        } catch (e) {
+          console.warn("JESS: createImageBitmap path failed, falling back to FileReader.", e);
+        }
+      }
+
+      // Path 2: the original FileReader + <img> approach.
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("this device could not read the file"));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error(
+            "this browser could not decode the image. If it was taken on an iPhone or iPad it may be in HEIC format; " +
+            "try taking a screenshot of it and uploading that instead, or set Camera > Formats to \"Most Compatible\"."
+          ));
+          img.onload = () => {
+            try { resolve(drawToDataUrl(img, img.width, img.height)); }
+            catch (err) { reject(err); }
+          };
+          img.src = reader.result;
         };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    });
+        reader.readAsDataURL(file);
+      });
+    })();
   }
 
   /* ------------------------------------------------------------------ *
@@ -1007,7 +1052,7 @@
             DATA.team[i].photo = url;
             markDirty(); draw();
             toast("Photo added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+          }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed. Click \"Save Changes\" to publish.");
@@ -1060,7 +1105,7 @@
             DATA.testimonials[i].photo = url;
             markDirty(); draw();
             toast("Photo added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+          }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed. Click \"Save Changes\" to publish.");
@@ -1107,7 +1152,7 @@
             DATA.gallery[i].img = url;
             markDirty(); draw();
             toast("Image added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+          }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed. Click \"Save Changes\" to publish.");
@@ -1215,7 +1260,7 @@
             DATA.partners[i].logoPosY = 50;
             markDirty(); draw();
             toast("Logo added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+          }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
         });
 
         // Crop tool: drag to reposition, slider to zoom. Every change is
@@ -1380,7 +1425,7 @@
             item.image = url;
             markDirty(); draw();
             toast("Image added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+          }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
         });
         const removeBtn = card.querySelector("[data-remove-image]");
         if (removeBtn) removeBtn.addEventListener("click", () => {
@@ -1711,7 +1756,7 @@
         DATA.jessEdu.image = url;
         markDirty(); renderAdminPanel("jessedu");
         toast("Image added. Click \"Save Changes\" to publish.");
-      }).catch(() => toast("Could not process that image. Try a different file."));
+      }).catch((err) => toast("Image not added: " + ((err && err.message) || "unknown error")));
     });
     const removeImg = root.querySelector("#jeRemoveImage");
     if (removeImg) removeImg.addEventListener("click", () => {
