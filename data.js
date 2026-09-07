@@ -723,6 +723,29 @@ function stripUndefinedDeep(value) {
   return value;
 }
 
+// Walks an already-cleaned object looking for any undefined that
+// survived, returning its exact dotted path (e.g. "core.impact.blocks[2].goal")
+// or null if genuinely clean. Purely diagnostic -- lets a failure name the
+// field directly instead of everyone guessing from Firestore's generic error.
+function findFirstUndefinedPath(value, path) {
+  if (value === undefined) return path;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const found = findFirstUndefinedPath(value[i], `${path}[${i}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    for (const k of Object.keys(value)) {
+      const found = findFirstUndefinedPath(value[k], `${path}.${k}`);
+      if (found) return found;
+    }
+    return null;
+  }
+  return null;
+}
+
 let lastSaveReport = [];
 function getLastSaveReport() { return lastSaveReport; }
 
@@ -745,6 +768,15 @@ async function saveData(data) {
   // --- Step 1: the core document (hero, mission, programs, events, etc.) ---
   try {
     const core = stripUndefinedDeep(stripSplitFields(data));
+
+    // Belt-and-suspenders: prove there is truly no undefined left, and if
+    // there somehow still is, name the EXACT field instead of relying on
+    // Firestore's own error (which only ever says "somewhere in this
+    // document", never where). If this ever fires, it means
+    // stripUndefinedDeep itself has a real gap, not a deployment issue.
+    const badPath = findFirstUndefinedPath(core, "core");
+    if (badPath) throw new Error(`Internal error: "${badPath}" is still undefined after cleanup. Please report this exact field name.`);
+
     const coreBytes = new Blob([JSON.stringify(core)]).size;
     await fsFns.setDoc(siteDocRef(), core);
     lastSaveReport.push({ step: "Main content (jess/site)", ok: true, detail: `saved, ${(coreBytes / 1024).toFixed(1)} KB of the 1024 KB limit` });
