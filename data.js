@@ -609,10 +609,17 @@ function subscribe(callback) {
   // added complexity of merging six independent live streams into one
   // callback.
   return fsFns.onSnapshot(siteDocRef(), (snap) => {
-    const raw = snap.exists() ? snap.data() : defaultData();
+    // Do NOT write sample content into Firestore when the document
+    // looks absent. A missing snapshot is far more often a transient
+    // rules/permission/network condition than a genuinely new project,
+    // and auto-seeding here could overwrite a real site with samples.
+    // Seeding is now an explicit admin action only.
     if (!snap.exists()) {
-      fsFns.setDoc(siteDocRef(), raw).catch((e) => console.warn("JESS: could not seed Firestore.", e));
+      console.warn("JESS: site document not readable right now. Keeping the current view; not seeding sample data.");
+      if (!cached) callback(defaultData());
+      return;
     }
+    const raw = snap.data();
     loadAndMergeSplitCollections(raw).then((withSplit) => {
       const merged = mergeWithDefaults(withSplit);
       setLocalCache(merged);
@@ -638,33 +645,41 @@ function loadWasStale() { return lastLoadFellBackToCache; }
 
 async function loadOnce() {
   const cached = getLocalCache();
-  if (!firebaseReady) { lastLoadFellBackToCache = true; return cached || defaultData(); }
+  // NEVER fall back to defaultData() here. This function's return value
+  // is what the admin panel treats as "the current site", and anything
+  // saved afterwards overwrites Firestore with it. Returning built-in
+  // SAMPLE content on a failed read therefore meant a temporary network
+  // or rules problem could put placeholder events, team members and
+  // programs on screen looking exactly like real data, and one Save
+  // would then destroy the genuine content. That is what happened.
+  //
+  // A real cached copy of this site is acceptable (it is the admin's own
+  // data), but sample content never is. When there is neither, this now
+  // returns null so admin.js can refuse to load rather than invent a site.
+  if (!firebaseReady) {
+    lastLoadFellBackToCache = true;
+    return cached || null;
+  }
 
   try {
     const snap = await fsFns.getDoc(siteDocRef());
-    let raw;
-    if (snap.exists()) {
-      raw = snap.data();
-    } else {
-      raw = defaultData();
-      await fsFns.setDoc(siteDocRef(), raw);
+    if (!snap.exists()) {
+      // Do NOT seed defaults over a document that may exist but be
+      // temporarily unreadable. Only a genuinely new, empty project
+      // should ever get sample content, and that is now an explicit
+      // admin action ("Reset website"), never an automatic one.
+      lastLoadFellBackToCache = true;
+      return cached || null;
     }
-    const withSplit = await loadAndMergeSplitCollections(raw);
+    const withSplit = await loadAndMergeSplitCollections(snap.data());
     const merged = mergeWithDefaults(withSplit);
     setLocalCache(merged);
     lastLoadFellBackToCache = false;
     return merged;
   } catch (e) {
-    // This USED to fail silently: the admin panel would just show
-    // whatever was in the browser's local cache with no indication
-    // anything had gone wrong, which is exactly how a stale, incomplete
-    // cache could look identical to "this is the real current site" —
-    // team members who were added since that cache was captured would
-    // simply not be there, with nothing on screen suggesting why.
-    // loadWasStale() lets admin.js show an explicit warning instead.
-    console.warn("JESS: could not reach Firestore, using local cache/defaults.", e);
+    console.warn("JESS: could not reach Firestore. Not substituting sample data.", e);
     lastLoadFellBackToCache = true;
-    return cached || defaultData();
+    return cached || null;
   }
 }
 

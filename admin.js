@@ -410,15 +410,17 @@
     const adminEmail = window.FIREBASE_ADMIN_EMAIL;
     if (user && adminEmail && user.email === adminEmail) {
       window.JESSData.loadOnce().then((data) => {
+        // loadOnce() now returns null rather than substituting sample
+        // content when the real site can't be read. Refuse to open the
+        // dashboard at all in that case: an admin panel showing invented
+        // data that a single Save would write over the real site is far
+        // worse than an admin panel that won't open.
+        if (!data) {
+          showGate("Could not load your site data from Firestore. Nothing has been changed. Check your connection and that firestore.rules is published, then try again.");
+          return;
+        }
         DATA = data;
         showDashboard();
-        // If any part of this load had to fall back to a cached copy
-        // instead of a fresh Firestore read, warn loudly rather than
-        // silently. Saving in this state is exactly how a handful of
-        // real, un-fetched team members (or gallery items, or anything
-        // else in a split collection) could get permanently deleted:
-        // the save logic treats "not in what I'm currently showing" as
-        // "the admin removed this on purpose."
         if (window.JESSData.loadWasStale() || window.JESSData.splitFieldsFailedLastLoad()) {
           showStaleDataWarning();
         }
