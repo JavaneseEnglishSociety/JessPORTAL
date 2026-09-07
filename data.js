@@ -367,6 +367,107 @@ const siteDocRef = () => fsFns.doc(db, DOC_COLLECTION, DOC_ID);
  * REAL-TIME SUBSCRIBE (used by the public site — updates live, across
  * every device, whenever the admin portal saves a change)
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+ * SPLIT COLLECTIONS — team, testimonials, gallery, partners, and news
+ * each live in their OWN Firestore collection (one document per item)
+ * instead of as arrays embedded inside the single jess/site document.
+ *
+ * jess/site has a hard 1MB total limit shared by everything written to
+ * it. With these five arrays embedded, every team photo, gallery
+ * image, partner logo, and news cover image all counted against that
+ * ONE shared ceiling — which is exactly what "exceeds the 1MB limit"
+ * meant when it actually happened. A single item in its own document
+ * gets its OWN 1MB ceiling; one person's name, bio, and one compressed
+ * photo will never come close to that on their own, and adding a
+ * hundredth team member costs nothing against the size of any other
+ * document, including jess/site itself.
+ *
+ * This needs no new Firebase product, no billing plan, and no new
+ * signup — it's the same Firestore database already in use, just
+ * organised so no single write can hit a wall the others share.
+ * ------------------------------------------------------------------ */
+const SPLIT_FIELDS = ["team", "testimonials", "gallery", "partners", "news"];
+
+// Which item IDs this tab has actually seen written to each collection,
+// captured on load and updated after every save. Diffing against this
+// on the next save is how a removed item gets deleted from Firestore
+// instead of silently lingering there forever.
+let knownSplitIds = { team: new Set(), testimonials: new Set(), gallery: new Set(), partners: new Set(), news: new Set() };
+
+function splitCollectionRef(field) {
+  return fsFns.collection(db, field);
+}
+
+async function loadSplitCollections() {
+  const out = {};
+  await Promise.all(SPLIT_FIELDS.map(async (field) => {
+    const snap = await fsFns.getDocs(splitCollectionRef(field));
+    out[field] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }));
+  return out;
+}
+
+// One-time migration: a site created before this change still has its
+// team/testimonials/gallery/partners/news sitting as arrays embedded in
+// the jess/site document itself. The very first time this runs against
+// such a site, each embedded item is copied out into its own new
+// document in the matching collection, so nothing already on the site
+// is lost. Runs at most once per field, ever — after migration, the
+// collection is non-empty, so this check never fires for that field
+// again, even if the old embedded array is still sitting in the core
+// document unused.
+async function migrateSplitFieldIfNeeded(field, splitItems, coreEmbeddedItems) {
+  if (splitItems.length > 0) return splitItems; // already migrated (or genuinely empty on purpose)
+  if (!coreEmbeddedItems || coreEmbeddedItems.length === 0) return splitItems;
+  console.info(`JESS: migrating ${coreEmbeddedItems.length} existing ${field} item(s) into their own documents.`);
+  const migrated = [];
+  for (const item of coreEmbeddedItems) {
+    const id = item.id || uid();
+    const withId = { ...item, id };
+    try {
+      await fsFns.setDoc(fsFns.doc(db, field, id), withId);
+      migrated.push(withId);
+    } catch (e) {
+      console.warn(`JESS: could not migrate one ${field} item; it stays only in the old embedded copy for now.`, e);
+    }
+  }
+  return migrated.length ? migrated : splitItems;
+}
+
+async function loadAndMergeSplitCollections(coreData) {
+  const split = await loadSplitCollections();
+  for (const field of SPLIT_FIELDS) {
+    split[field] = await migrateSplitFieldIfNeeded(field, split[field], coreData[field]);
+    coreData[field] = split[field];
+    knownSplitIds[field] = new Set(split[field].map((item) => item.id));
+  }
+  return coreData;
+}
+
+// Writes only what actually needs writing: new or changed items get
+// upserted, items that existed on the last load/save but are gone from
+// the in-memory data now get deleted. Every item is its own small
+// document, so this is many small writes rather than one big one —
+// well within Firestore's free daily write quota for a site this size.
+async function saveSplitCollections(data) {
+  for (const field of SPLIT_FIELDS) {
+    const items = data[field] || [];
+    const currentIds = new Set(items.map((item) => item.id));
+    const removedIds = [...knownSplitIds[field]].filter((id) => !currentIds.has(id));
+
+    await Promise.all(items.map((item) => fsFns.setDoc(fsFns.doc(db, field, item.id), item)));
+    await Promise.all(removedIds.map((id) => fsFns.deleteDoc(fsFns.doc(db, field, id))));
+
+    knownSplitIds[field] = currentIds;
+  }
+}
+
+function stripSplitFields(data) {
+  const core = { ...data };
+  SPLIT_FIELDS.forEach((field) => { delete core[field]; });
+  return core;
+}
+
 function subscribe(callback) {
   const cached = getLocalCache();
   if (cached) callback(mergeWithDefaults(cached));
@@ -376,17 +477,28 @@ function subscribe(callback) {
     return () => {};
   }
 
+  // The five split collections don't get their own live onSnapshot
+  // listeners here — that would mean six separate real-time streams to
+  // coordinate for a site update this infrequent. Instead, the public
+  // site re-fetches them each time the core document changes, which
+  // covers admin saves (which always touch jess/site too) without the
+  // added complexity of merging six independent live streams into one
+  // callback.
   return fsFns.onSnapshot(siteDocRef(), (snap) => {
-    if (snap.exists()) {
-      const merged = mergeWithDefaults(snap.data());
+    const raw = snap.exists() ? snap.data() : defaultData();
+    if (!snap.exists()) {
+      fsFns.setDoc(siteDocRef(), raw).catch((e) => console.warn("JESS: could not seed Firestore.", e));
+    }
+    loadAndMergeSplitCollections(raw).then((withSplit) => {
+      const merged = mergeWithDefaults(withSplit);
       setLocalCache(merged);
       callback(merged);
-    } else {
-      const def = defaultData();
-      fsFns.setDoc(siteDocRef(), def).catch((e) => console.warn("JESS: could not seed Firestore.", e));
-      setLocalCache(def);
-      callback(def);
-    }
+    }).catch((e) => {
+      console.warn("JESS: could not load team/testimonials/gallery/partners/news; showing core content only.", e);
+      const merged = mergeWithDefaults(raw);
+      setLocalCache(merged);
+      callback(merged);
+    });
   }, (err) => {
     console.warn("JESS: Firestore real-time read failed, using local cache/defaults.", err);
     if (!cached) callback(defaultData());
@@ -403,15 +515,17 @@ async function loadOnce() {
 
   try {
     const snap = await fsFns.getDoc(siteDocRef());
+    let raw;
     if (snap.exists()) {
-      const merged = mergeWithDefaults(snap.data());
-      setLocalCache(merged);
-      return merged;
+      raw = snap.data();
+    } else {
+      raw = defaultData();
+      await fsFns.setDoc(siteDocRef(), raw);
     }
-    const def = defaultData();
-    await fsFns.setDoc(siteDocRef(), def);
-    setLocalCache(def);
-    return def;
+    const withSplit = await loadAndMergeSplitCollections(raw);
+    const merged = mergeWithDefaults(withSplit);
+    setLocalCache(merged);
+    return merged;
   } catch (e) {
     console.warn("JESS: could not reach Firestore, using local cache/defaults.", e);
     return cached || defaultData();
@@ -428,7 +542,12 @@ async function saveData(data) {
   setLocalCache(data);
   if (!firebaseReady) return false;
   try {
-    await fsFns.setDoc(siteDocRef(), data);
+    // The core document never contains team/testimonials/gallery/
+    // partners/news anymore — those are saved separately, each item as
+    // its own small document, specifically so nothing here can ever
+    // grow into the 1MB-per-document wall on its own.
+    await fsFns.setDoc(siteDocRef(), stripSplitFields(data));
+    await saveSplitCollections(data);
     lastSaveError = null;
     return true;
   } catch (e) {
@@ -1068,6 +1187,88 @@ function uploadVideoFile(file, onProgress) {
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * IMAGE UPLOAD (Firebase Storage) — replaces storing photos as base64
+ * text directly inside the single jess/site Firestore document.
+ *
+ * Every photo on this site (team, testimonials, gallery, partner
+ * logos, news covers) used to be compressed into a base64 string and
+ * saved as a field on jess/site — but that document has Firestore's
+ * hard 1MB total limit, SHARED by every single one of those photos
+ * combined. A site with enough real content (a full team, a gallery,
+ * a few partners, some news posts with covers) will eventually and
+ * permanently hit that ceiling, at which point EVERY save fails,
+ * including ones that have nothing to do with images, until an old
+ * photo is deleted to make room again. This happened for real, not
+ * hypothetically — that's what "exceeds the 1MB limit" meant.
+ *
+ * Storage has no such per-document limit (5GB on the free plan, a
+ * roughly 5000x bigger ceiling), so images now go there instead, and
+ * only the short resulting download URL — a few dozen characters —
+ * gets saved onto jess/site. The image is still compressed
+ * client-side first (smaller files, faster loads for visitors on
+ * slow connections), it just isn't embedded as text in the document
+ * anymore.
+ * ------------------------------------------------------------------ */
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15MB raw upload cap, before compression
+
+function compressImageToBlob(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) { reject(new Error("Not an image file.")); return; }
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not read that image."));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error("Could not process that image.")); return; }
+          resolve(blob);
+        }, "image/jpeg", quality);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// folder examples: "team-photos", "gallery", "partner-logos",
+// "testimonial-photos", "news-images", "jessedu-images"
+async function uploadImageFile(file, folder, maxDim, quality, onProgress) {
+  if (!firebaseReady) return Promise.reject(new Error("Firebase is not configured yet."));
+  if (!storage || !storageFns) return Promise.reject(new Error("Firebase Storage isn't set up yet — see storage.rules and firebase-config.js."));
+  if (!file.type.startsWith("image/")) return Promise.reject(new Error("That file isn't an image."));
+  if (file.size > MAX_IMAGE_BYTES) return Promise.reject(new Error("That image is larger than 15MB — try a smaller file."));
+
+  const blob = await compressImageToBlob(file, maxDim || 640, quality || 0.78);
+  const path = folder + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + ".jpg";
+  const fileRef = storageFns.ref(storage, path);
+  const task = storageFns.uploadBytesResumable(fileRef, blob, { contentType: "image/jpeg" });
+
+  return new Promise((resolve, reject) => {
+    task.on("state_changed",
+      (snapshot) => {
+        if (onProgress) onProgress(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+      },
+      (err) => reject(err),
+      async () => {
+        try {
+          const url = await storageFns.getDownloadURL(task.snapshot.ref);
+          resolve(url);
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+}
+
 window.JESSData = {
   STORAGE_KEY, uid, defaultData,
   subscribe, loadOnce, saveData,
@@ -1077,7 +1278,7 @@ window.JESSData = {
   submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication, DEPARTMENTS,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
-  uploadVideoFile, getLastSaveError,
+  uploadVideoFile, uploadImageFile, getLastSaveError,
   firebaseReady: () => firebaseReady
 };
 
