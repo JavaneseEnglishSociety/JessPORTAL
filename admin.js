@@ -968,11 +968,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing photo…");
-          window.JESSData.uploadImageFile(file, "team-photos", 480, 0.78).then((url) => {
+          compressImage(file, 480, 0.78).then((url) => {
             DATA.team[i].photo = url;
             markDirty(); draw();
-            toast("Photo uploaded. Click \"Save Changes\" to publish.");
-          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
+            toast("Photo added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed. Click \"Save Changes\" to publish.");
@@ -1021,11 +1021,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing photo…");
-          window.JESSData.uploadImageFile(file, "testimonial-photos", 480, 0.78).then((url) => {
+          compressImage(file, 480, 0.78).then((url) => {
             DATA.testimonials[i].photo = url;
             markDirty(); draw();
-            toast("Photo uploaded. Click \"Save Changes\" to publish.");
-          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
+            toast("Photo added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed. Click \"Save Changes\" to publish.");
@@ -1068,11 +1068,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing image…");
-          window.JESSData.uploadImageFile(file, "gallery", 640, 0.75).then((url) => {
+          compressImage(file, 640, 0.75).then((url) => {
             DATA.gallery[i].img = url;
             markDirty(); draw();
-            toast("Image uploaded. Click \"Save Changes\" to publish.");
-          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
+            toast("Image added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed. Click \"Save Changes\" to publish.");
@@ -1173,7 +1173,7 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing logo…");
-          window.JESSData.uploadImageFile(file, "partner-logos", 480, 0.85).then((url) => {
+          compressImage(file, 480, 0.85).then((url) => {
             DATA.partners[i].logo = url;
             DATA.partners[i].logoZoom = 1;
             DATA.partners[i].logoPosX = 50;
@@ -1341,11 +1341,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing image…");
-          window.JESSData.uploadImageFile(file, "news-images", 640, 0.72).then((url) => {
+          compressImage(file, 640, 0.72).then((url) => {
             item.image = url;
             markDirty(); draw();
-            toast("Image uploaded. Click \"Save Changes\" to publish.");
-          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
+            toast("Image added. Click \"Save Changes\" to publish.");
+          }).catch(() => toast("Could not process that image. Try a different file."));
         });
         const removeBtn = card.querySelector("[data-remove-image]");
         if (removeBtn) removeBtn.addEventListener("click", () => {
@@ -1672,11 +1672,11 @@
       const file = e.target.files[0];
       if (!file) return;
       toast("Processing image…");
-      window.JESSData.uploadImageFile(file, "jessedu-images", 640, 0.75).then((url) => {
+      compressImage(file, 640, 0.75).then((url) => {
         DATA.jessEdu.image = url;
         markDirty(); renderAdminPanel("jessedu");
-        toast("Image uploaded. Click \"Save Changes\" to publish.");
-      }).catch((err) => toast((err && err.message) || "Could not upload that image."));
+        toast("Image added. Click \"Save Changes\" to publish.");
+      }).catch(() => toast("Could not process that image. Try a different file."));
     });
     const removeImg = root.querySelector("#jeRemoveImage");
     if (removeImg) removeImg.addEventListener("click", () => {
