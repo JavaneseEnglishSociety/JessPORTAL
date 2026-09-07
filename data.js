@@ -349,10 +349,18 @@ function normalizeData(data) {
     // coerce an intentionally emptied string into the number 0.
     value: b.value === undefined || b.value === null ? 0 : b.value,
     suffix: b.suffix || "",
-    goal: b.goal, max: b.max, previous: b.previous,
-    perIcon: b.perIcon, icon: b.icon,
-    beforeLabel: b.beforeLabel, afterLabel: b.afterLabel,
-    beforeValue: b.beforeValue, afterValue: b.afterValue,
+    // Every optional field below only applies to SOME chart types (e.g.
+    // "goal" means nothing on a bigNumber block). Firestore's setDoc()
+    // rejects a document containing a literal `undefined` ANYWHERE in
+    // it -- not just at the top level -- so a block missing one of
+    // these must fall back to `null` (which Firestore accepts fine),
+    // never be left as `undefined`. Leaving this as `b.goal` etc without
+    // a fallback is exactly what broke every save once real content
+    // included a block type that doesn't use every field.
+    goal: b.goal ?? null, max: b.max ?? null, previous: b.previous ?? null,
+    perIcon: b.perIcon ?? null, icon: b.icon ?? null,
+    beforeLabel: b.beforeLabel ?? null, afterLabel: b.afterLabel ?? null,
+    beforeValue: b.beforeValue ?? null, afterValue: b.afterValue ?? null,
     series: Array.isArray(b.series) ? b.series : []
   }));
 
@@ -697,6 +705,24 @@ let lastSaveError = null;
 // on screen — the site is administered from an iPad, where opening a
 // browser console to read errors is impractical, so "check the console"
 // was never a workable diagnostic path here.
+// Firestore's setDoc() rejects a document containing a literal
+// `undefined` value ANYWHERE in its structure, at any depth. This
+// recursively replaces every `undefined` with `null` (which Firestore
+// accepts) right before writing, so any field -- on the core document,
+// a team member, a gallery item, anything -- that ends up undefined
+// for any reason can never silently break a save.
+function stripUndefinedDeep(value) {
+  if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+  if (value && typeof value === "object") {
+    const out = {};
+    Object.keys(value).forEach((k) => {
+      out[k] = value[k] === undefined ? null : stripUndefinedDeep(value[k]);
+    });
+    return out;
+  }
+  return value;
+}
+
 let lastSaveReport = [];
 function getLastSaveReport() { return lastSaveReport; }
 
@@ -718,7 +744,7 @@ async function saveData(data) {
 
   // --- Step 1: the core document (hero, mission, programs, events, etc.) ---
   try {
-    const core = stripSplitFields(data);
+    const core = stripUndefinedDeep(stripSplitFields(data));
     const coreBytes = new Blob([JSON.stringify(core)]).size;
     await fsFns.setDoc(siteDocRef(), core);
     lastSaveReport.push({ step: "Main content (jess/site)", ok: true, detail: `saved, ${(coreBytes / 1024).toFixed(1)} KB of the 1024 KB limit` });
@@ -742,7 +768,7 @@ async function saveData(data) {
     for (const item of items) {
       try {
         if (!item.id) throw new Error("this item has no id, so it cannot be saved");
-        await fsFns.setDoc(fsFns.doc(db, field, item.id), item);
+        await fsFns.setDoc(fsFns.doc(db, field, item.id), stripUndefinedDeep(item));
         written++;
       } catch (e) {
         failed++; lastFieldErr = e; lastSaveError = e;
@@ -764,7 +790,7 @@ async function saveData(data) {
   // --- Step 3: singleton fields (jessEdu) ---
   for (const field of SINGLETON_FIELDS) {
     try {
-      await fsFns.setDoc(fsFns.doc(db, SINGLETON_COLLECTION, field), data[field] || {});
+      await fsFns.setDoc(fsFns.doc(db, SINGLETON_COLLECTION, field), stripUndefinedDeep(data[field] || {}));
       lastSaveReport.push({ step: field, ok: true, detail: "saved" });
     } catch (e) {
       allOk = false; lastSaveError = e;
