@@ -125,6 +125,34 @@
     return "⚠️ Not saved to Firestore. Check your connection and try again — see the browser console for the exact error.";
   }
 
+  // Renders the step-by-step save report from data.js directly into the
+  // page. Each collection reports its own success or failure by name, so
+  // a photo that failed to write is distinguishable from a total outage
+  // without needing browser dev tools.
+  function showSaveReport() {
+    const old = document.getElementById("saveReportPanel");
+    if (old) old.remove();
+    const report = (window.JESSData.getLastSaveReport && window.JESSData.getLastSaveReport()) || [];
+    if (!report.length) return;
+    const host = document.getElementById("adminContent") || document.body;
+    const panel = document.createElement("div");
+    panel.id = "saveReportPanel";
+    panel.style.cssText =
+      "margin-bottom:16px;padding:14px 18px;background:#FFF8E1;border:2px solid #E6B800;" +
+      "border-radius:8px;color:#5A4300;font-size:0.9rem;line-height:1.6;";
+    const rows = report.map((r) =>
+      `<div style="padding:3px 0;">${r.ok ? "✅" : "❌"} <strong>${esc(r.step)}</strong>: ${esc(r.detail)}</div>`
+    ).join("");
+    panel.innerHTML =
+      '<strong style="font-size:0.98rem;">Save report</strong>' +
+      '<div style="margin-top:8px;">' + rows + '</div>' +
+      '<div style="margin-top:10px;font-size:0.84rem;opacity:0.85;">Anything marked ❌ was not written to the server. ' +
+      'A "permission-denied" message almost always means firestore.rules has not been published for that collection yet.</div>' +
+      '<button type="button" id="saveReportCloseBtn" style="margin-top:10px;padding:6px 14px;border-radius:6px;border:1px solid #5A4300;background:#fff;color:#5A4300;cursor:pointer;font-weight:600;">Dismiss</button>';
+    host.insertBefore(panel, host.firstChild);
+    document.getElementById("saveReportCloseBtn").addEventListener("click", () => panel.remove());
+  }
+
   // The actual network write — only ever called from the Save button now.
   function persistNow() {
     if (!DATA || isSaving) return Promise.resolve(false);
@@ -142,12 +170,19 @@
           lastSaveFailureToastAt = now;
           toast(buildSaveFailureMessage());
         }
+        // Show the full per-step report on screen. A toast disappears
+        // and the browser console isn't practically reachable when this
+        // site is administered from an iPad, so a failure that names
+        // exactly which part broke has to be readable in the page itself.
+        showSaveReport();
         // Leave isDirty true — the edits are still only in memory/local
         // cache, and the button should keep inviting a retry.
         updateSaveUI();
       } else {
         isDirty = false;
         toast("Saved.");
+        const old = document.getElementById("saveReportPanel");
+        if (old) old.remove();
         updateSaveUI();
       }
       return ok;

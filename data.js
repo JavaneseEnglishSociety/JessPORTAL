@@ -602,23 +602,88 @@ async function loadOnce() {
  * ------------------------------------------------------------------ */
 let lastSaveError = null;
 
+// A human-readable, step-by-step record of what happened during the last
+// save attempt. Written on every save so the admin panel can display it
+// on screen — the site is administered from an iPad, where opening a
+// browser console to read errors is impractical, so "check the console"
+// was never a workable diagnostic path here.
+let lastSaveReport = [];
+function getLastSaveReport() { return lastSaveReport; }
+
+function describeErr(e) {
+  if (!e) return "unknown error";
+  const code = e.code ? ` [${e.code}]` : "";
+  return (e.message || String(e)) + code;
+}
+
 async function saveData(data) {
   setLocalCache(data);
-  if (!firebaseReady) return false;
-  try {
-    // The core document never contains team/testimonials/gallery/
-    // partners/news anymore — those are saved separately, each item as
-    // its own small document, specifically so nothing here can ever
-    // grow into the 1MB-per-document wall on its own.
-    await fsFns.setDoc(siteDocRef(), stripSplitFields(data));
-    await saveSplitCollections(data);
-    lastSaveError = null;
-    return true;
-  } catch (e) {
-    console.warn("JESS: Firestore save failed — change was kept locally only.", e);
-    lastSaveError = e;
+  lastSaveReport = [];
+  if (!firebaseReady) {
+    lastSaveReport.push({ step: "Firebase", ok: false, detail: "Firebase never initialised — running local-only. Nothing was written to the server." });
     return false;
   }
+
+  let allOk = true;
+
+  // --- Step 1: the core document (hero, mission, programs, events, etc.) ---
+  try {
+    const core = stripSplitFields(data);
+    const coreBytes = new Blob([JSON.stringify(core)]).size;
+    await fsFns.setDoc(siteDocRef(), core);
+    lastSaveReport.push({ step: "Main content (jess/site)", ok: true, detail: `saved, ${(coreBytes / 1024).toFixed(1)} KB of the 1024 KB limit` });
+  } catch (e) {
+    allOk = false;
+    lastSaveError = e;
+    lastSaveReport.push({ step: "Main content (jess/site)", ok: false, detail: describeErr(e) });
+  }
+
+  // --- Step 2: each split collection, reported individually ---
+  // Previously a single failure anywhere in here aborted the whole
+  // remaining save with one vague message, so a photo silently failing
+  // to write looked identical to a total outage. Now each collection
+  // succeeds or fails on its own and says so by name.
+  for (const field of SPLIT_FIELDS) {
+    const items = data[field] || [];
+    const currentIds = new Set(items.map((item) => item.id));
+    const removedIds = [...knownSplitIds[field]].filter((id) => !currentIds.has(id));
+    let written = 0, failed = 0, lastFieldErr = null;
+
+    for (const item of items) {
+      try {
+        if (!item.id) throw new Error("this item has no id, so it cannot be saved");
+        await fsFns.setDoc(fsFns.doc(db, field, item.id), item);
+        written++;
+      } catch (e) {
+        failed++; lastFieldErr = e; lastSaveError = e;
+      }
+    }
+    for (const id of removedIds) {
+      try { await fsFns.deleteDoc(fsFns.doc(db, field, id)); } catch (e) { /* a failed delete is not data loss */ }
+    }
+
+    if (failed === 0) {
+      knownSplitIds[field] = currentIds;
+      lastSaveReport.push({ step: field, ok: true, detail: `${written} item(s) saved` });
+    } else {
+      allOk = false;
+      lastSaveReport.push({ step: field, ok: false, detail: `${failed} of ${items.length} failed — ${describeErr(lastFieldErr)}` });
+    }
+  }
+
+  // --- Step 3: singleton fields (jessEdu) ---
+  for (const field of SINGLETON_FIELDS) {
+    try {
+      await fsFns.setDoc(fsFns.doc(db, SINGLETON_COLLECTION, field), data[field] || {});
+      lastSaveReport.push({ step: field, ok: true, detail: "saved" });
+    } catch (e) {
+      allOk = false; lastSaveError = e;
+      lastSaveReport.push({ step: field, ok: false, detail: describeErr(e) });
+    }
+  }
+
+  if (allOk) lastSaveError = null;
+  return allOk;
 }
 
 // Lets admin.js build a specific error message after a failed save,
@@ -1342,7 +1407,7 @@ window.JESSData = {
   submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication, DEPARTMENTS,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
-  uploadVideoFile, uploadImageFile, getLastSaveError, loadWasStale, splitFieldsFailedLastLoad,
+  uploadVideoFile, uploadImageFile, getLastSaveError, getLastSaveReport, loadWasStale, splitFieldsFailedLastLoad,
   firebaseReady: () => firebaseReady
 };
 
