@@ -107,6 +107,338 @@
       <li><strong>${autoField(v, "title")}</strong><span>${autoField(v, "desc")}</span></li>`).join("");
   }
 
+  /* ==========================================================================
+     Impact dashboard renderer.
+
+     Every visual here is inline SVG built by hand rather than by a charting
+     library. That is deliberate: no third-party script to download (the
+     site is read on slow mobile connections in Indonesia), nothing to pay
+     for or sign up to, no version to keep updated, and it renders the same
+     offline once the page is cached. The trade-off is that each chart type
+     is written out explicitly below instead of configured, which is fine
+     at this scale.
+     ========================================================================== */
+
+  const IMPACT_COLORS = {
+    green: "#2F9E63", blue: "#2E6DA4", gold: "#B07D26",
+    coral: "#A8412F", purple: "#6B4C7A", teal: "#2F8F8F"
+  };
+  function impactColor(name) { return IMPACT_COLORS[name] || IMPACT_COLORS.green; }
+
+  function svgWrap(inner, viewBox, extraClass) {
+    return `<svg class="impact-svg ${extraClass || ""}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet" role="img">${inner}</svg>`;
+  }
+
+  /* Count-up animation for headline numbers. Uses requestAnimationFrame
+     and respects prefers-reduced-motion by jumping straight to the final
+     value instead of animating. */
+  function animateCount(el, target, suffix) {
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !target) { el.textContent = target + (suffix || ""); return; }
+    const duration = 1100;
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(target * eased) + (suffix || "");
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function seriesMax(series) {
+    return Math.max(1, ...series.map((s) => Number(s.value) || 0));
+  }
+  function seriesTotal(series) {
+    return series.reduce((sum, s) => sum + (Number(s.value) || 0), 0);
+  }
+
+  /* ---- Individual chart builders ------------------------------------- */
+
+  function chartBigNumber(b) {
+    return `<div class="impact-figure" data-count="${Number(b.value) || 0}" data-suffix="${esc(b.suffix || "")}"
+              style="color:${impactColor(b.color)}">0</div>`;
+  }
+
+  function chartTrend(b) {
+    const cur = Number(b.value) || 0, prev = Number(b.previous) || 0;
+    const diff = cur - prev;
+    const pct = prev ? Math.round((diff / prev) * 100) : 0;
+    const up = diff >= 0;
+    return `<div class="impact-figure" data-count="${cur}" data-suffix="${esc(b.suffix || "")}"
+              style="color:${impactColor(b.color)}">0</div>
+            <div class="impact-trend ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(pct)}% vs ${prev}</div>`;
+  }
+
+  function chartProgress(b) {
+    const val = Number(b.value) || 0, goal = Number(b.goal) || 1;
+    const pct = Math.max(0, Math.min(100, (val / goal) * 100));
+    return `<div class="impact-figure-sm" style="color:${impactColor(b.color)}">${val.toLocaleString()} <span class="impact-of">of ${goal.toLocaleString()}</span></div>
+      <div class="impact-progress-track"><div class="impact-progress-fill" style="width:${pct}%;background:${impactColor(b.color)}"></div></div>
+      <div class="impact-sub">${Math.round(pct)}% there</div>`;
+  }
+
+  function chartGauge(b) {
+    const val = Number(b.value) || 0, max = Number(b.max) || 100;
+    const pct = Math.max(0, Math.min(1, val / max));
+    // Semicircle: radius 70, centred at (80,80), sweeping 180 degrees.
+    const r = 62, cx = 80, cy = 80;
+    const len = Math.PI * r;
+    const angle = Math.PI * pct;
+    const ex = cx - r * Math.cos(angle), ey = cy - r * Math.sin(angle);
+    const inner =
+      `<path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" fill="none" stroke="#E5DDCB" stroke-width="14" stroke-linecap="round"/>` +
+      `<path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${ex} ${ey}" fill="none" stroke="${impactColor(b.color)}" stroke-width="14" stroke-linecap="round"/>` +
+      `<text x="${cx}" y="${cy - 6}" text-anchor="middle" class="impact-svg-big" fill="${impactColor(b.color)}">${val}${esc(b.suffix || "")}</text>`;
+    return svgWrap(inner, "0 0 160 96");
+  }
+
+  function chartDonut(b) {
+    const total = seriesTotal(b.series) || 1;
+    const r = 54, cx = 80, cy = 80, stroke = 26;
+    const circ = 2 * Math.PI * r;
+    let offset = 0;
+    const rings = b.series.map((s) => {
+      const frac = (Number(s.value) || 0) / total;
+      const dash = `${(frac * circ).toFixed(2)} ${(circ - frac * circ).toFixed(2)}`;
+      const el = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${impactColor(s.color)}"
+        stroke-width="${stroke}" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset * circ).toFixed(2)}"
+        transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += frac;
+      return el;
+    }).join("");
+    const inner = rings + `<text x="${cx}" y="${cy + 7}" text-anchor="middle" class="impact-svg-big" fill="var(--ink,#17241C)">${total}</text>`;
+    return svgWrap(inner, "0 0 160 160") + impactLegend(b.series);
+  }
+
+  function chartPie(b) {
+    const total = seriesTotal(b.series) || 1;
+    const cx = 80, cy = 80, r = 70;
+    let angle = -Math.PI / 2;
+    const slices = b.series.map((s) => {
+      const frac = (Number(s.value) || 0) / total;
+      const end = angle + frac * 2 * Math.PI;
+      const x1 = cx + r * Math.cos(angle), y1 = cy + r * Math.sin(angle);
+      const x2 = cx + r * Math.cos(end), y2 = cy + r * Math.sin(end);
+      const large = frac > 0.5 ? 1 : 0;
+      const path = `<path d="M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z" fill="${impactColor(s.color)}"/>`;
+      angle = end;
+      return path;
+    }).join("");
+    return svgWrap(slices, "0 0 160 160") + impactLegend(b.series);
+  }
+
+  function chartBarsV(b) {
+    const max = seriesMax(b.series);
+    const w = 260, h = 120, gap = 8;
+    const bw = (w - gap * (b.series.length - 1)) / b.series.length;
+    const bars = b.series.map((s, i) => {
+      const bh = ((Number(s.value) || 0) / max) * (h - 22);
+      const x = i * (bw + gap), y = h - 18 - bh;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(2, bh).toFixed(1)}" rx="3" fill="${impactColor(b.color)}"/>
+              <text x="${(x + bw / 2).toFixed(1)}" y="${h - 5}" text-anchor="middle" class="impact-svg-axis">${esc(s.label)}</text>`;
+    }).join("");
+    return svgWrap(bars, `0 0 ${w} ${h}`);
+  }
+
+  function chartBarsH(b) {
+    const max = seriesMax(b.series);
+    return `<div class="impact-hbars">` + b.series.map((s) => {
+      const pct = ((Number(s.value) || 0) / max) * 100;
+      return `<div class="impact-hbar-row">
+        <span class="impact-hbar-label">${esc(s.label)}</span>
+        <span class="impact-hbar-track"><span class="impact-hbar-fill" style="width:${pct}%;background:${impactColor(b.color)}"></span></span>
+        <span class="impact-hbar-val">${esc(String(s.value))}</span>
+      </div>`;
+    }).join("") + `</div>`;
+  }
+
+  function chartRanked(b) {
+    const max = seriesMax(b.series);
+    return `<div class="impact-hbars">` + b.series.map((s, i) => {
+      const pct = ((Number(s.value) || 0) / max) * 100;
+      return `<div class="impact-hbar-row">
+        <span class="impact-rank">${i + 1}</span>
+        <span class="impact-hbar-label">${esc(s.label)}</span>
+        <span class="impact-hbar-track"><span class="impact-hbar-fill" style="width:${pct}%;background:${impactColor(b.color)}"></span></span>
+        <span class="impact-hbar-val">${esc(String(s.value))}</span>
+      </div>`;
+    }).join("") + `</div>`;
+  }
+
+  function linePoints(series, w, h, pad) {
+    const max = seriesMax(series);
+    const step = series.length > 1 ? (w - pad * 2) / (series.length - 1) : 0;
+    return series.map((s, i) => {
+      const x = pad + i * step;
+      const y = h - pad - ((Number(s.value) || 0) / max) * (h - pad * 2);
+      return [x, y];
+    });
+  }
+
+  function chartLine(b) {
+    const w = 260, h = 120, pad = 18;
+    const pts = linePoints(b.series, w, h, pad);
+    const d = pts.map((p, i) => `${i ? "L" : "M"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    const dots = pts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="${impactColor(b.color)}"/>`).join("");
+    const labels = b.series.map((s, i) =>
+      `<text x="${pts[i][0].toFixed(1)}" y="${h - 4}" text-anchor="middle" class="impact-svg-axis">${esc(s.label)}</text>`).join("");
+    return svgWrap(`<path d="${d}" fill="none" stroke="${impactColor(b.color)}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots}${labels}`, `0 0 ${w} ${h}`);
+  }
+
+  function chartArea(b) {
+    const w = 260, h = 120, pad = 18;
+    const pts = linePoints(b.series, w, h, pad);
+    const d = pts.map((p, i) => `${i ? "L" : "M"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    const fill = `${d} L ${pts[pts.length - 1][0].toFixed(1)} ${h - pad} L ${pts[0][0].toFixed(1)} ${h - pad} Z`;
+    const labels = b.series.map((s, i) =>
+      `<text x="${pts[i][0].toFixed(1)}" y="${h - 4}" text-anchor="middle" class="impact-svg-axis">${esc(s.label)}</text>`).join("");
+    return svgWrap(
+      `<path d="${fill}" fill="${impactColor(b.color)}" opacity="0.18"/>
+       <path d="${d}" fill="none" stroke="${impactColor(b.color)}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${labels}`,
+      `0 0 ${w} ${h}`);
+  }
+
+  function chartSparkline(b) {
+    const w = 240, h = 60, pad = 6;
+    const pts = linePoints(b.series, w, h, pad);
+    const d = pts.map((p, i) => `${i ? "L" : "M"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    const last = pts[pts.length - 1];
+    const latest = b.series[b.series.length - 1];
+    return svgWrap(
+      `<path d="${d}" fill="none" stroke="${impactColor(b.color)}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+       <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" fill="${impactColor(b.color)}"/>`,
+      `0 0 ${w} ${h}`) +
+      `<div class="impact-sub">Latest: <strong>${esc(String(latest ? latest.value : ""))}</strong></div>`;
+  }
+
+  function chartStacked(b) {
+    const total = seriesTotal(b.series) || 1;
+    const segs = b.series.map((s) => {
+      const pct = ((Number(s.value) || 0) / total) * 100;
+      return `<span class="impact-stack-seg" style="width:${pct}%;background:${impactColor(s.color)}" title="${esc(s.label)}"></span>`;
+    }).join("");
+    return `<div class="impact-stack">${segs}</div>` + impactLegend(b.series);
+  }
+
+  function chartPictogram(b) {
+    const per = Number(b.perIcon) || 10;
+    const total = Number(b.value) || 0;
+    const full = Math.min(60, Math.floor(total / per)); // capped so a big number can't render thousands of nodes
+    const icons = Array.from({ length: full }, () => `<span class="impact-pict-icon">${b.icon || "🧑‍🎓"}</span>`).join("");
+    return `<div class="impact-figure-sm" style="color:${impactColor(b.color)}">${total.toLocaleString()}</div>
+            <div class="impact-pictogram">${icons}</div>`;
+  }
+
+  function chartCompare(b) {
+    const before = Number(b.beforeValue) || 0, after = Number(b.afterValue) || 0;
+    const max = Math.max(before, after, 1);
+    return `<div class="impact-compare">
+      <div class="impact-compare-col">
+        <span class="impact-compare-bar" style="height:${(before / max) * 100}%;background:#C4B79E"></span>
+        <span class="impact-compare-val">${before}${esc(b.suffix || "")}</span>
+        <span class="impact-compare-label">${esc(b.beforeLabel || "Before")}</span>
+      </div>
+      <div class="impact-compare-arrow">→</div>
+      <div class="impact-compare-col">
+        <span class="impact-compare-bar" style="height:${(after / max) * 100}%;background:${impactColor("green")}"></span>
+        <span class="impact-compare-val" style="color:${impactColor("green")}">${after}${esc(b.suffix || "")}</span>
+        <span class="impact-compare-label">${esc(b.afterLabel || "After")}</span>
+      </div>
+    </div>`;
+  }
+
+  function chartHeatgrid(b) {
+    const vals = Array.isArray(b.series) ? b.series.map((v) => (typeof v === "object" ? Number(v.value) : Number(v)) || 0) : [];
+    const max = Math.max(1, ...vals);
+    const cells = vals.map((v) => {
+      const intensity = v / max;
+      const alpha = v === 0 ? 0.08 : 0.2 + intensity * 0.8;
+      return `<span class="impact-heat-cell" style="background:${impactColor(b.color)};opacity:${alpha.toFixed(2)}"></span>`;
+    }).join("");
+    return `<div class="impact-heatgrid">${cells}</div>
+            <div class="impact-sub">Each square is one week</div>`;
+  }
+
+  function chartTimeline(b) {
+    return `<ol class="impact-timeline">` + b.series.map((s) => `
+      <li><span class="impact-tl-dot"></span>
+        <span class="impact-tl-year">${esc(String(s.value))}</span>
+        <span class="impact-tl-label">${esc(s.label)}</span></li>`).join("") + `</ol>`;
+  }
+
+  function impactLegend(series) {
+    return `<div class="impact-legend">` + series.map((s) =>
+      `<span class="impact-legend-item"><span class="impact-legend-dot" style="background:${impactColor(s.color)}"></span>${esc(s.label)} <strong>${esc(String(s.value))}</strong></span>`
+    ).join("") + `</div>`;
+  }
+
+  const IMPACT_BUILDERS = {
+    bigNumber: chartBigNumber, trend: chartTrend, progress: chartProgress, gauge: chartGauge,
+    donut: chartDonut, pie: chartPie, barsV: chartBarsV, barsH: chartBarsH, ranked: chartRanked,
+    line: chartLine, area: chartArea, sparkline: chartSparkline, stacked: chartStacked,
+    pictogram: chartPictogram, compare: chartCompare, heatgrid: chartHeatgrid, timeline: chartTimeline
+  };
+
+  // Blocks that read better across the full width of the grid.
+  const IMPACT_WIDE = ["barsV", "line", "area", "heatgrid", "ranked", "timeline", "barsH"];
+
+  function renderImpact() {
+    const section = document.getElementById("impact");
+    if (!section) return;
+    const imp = DATA.impact;
+    if (!imp || imp.enabled === false || !imp.blocks || !imp.blocks.length) {
+      section.hidden = true;
+      section.innerHTML = "";
+      return;
+    }
+    section.hidden = false;
+
+    const cards = imp.blocks.map((b) => {
+      const build = IMPACT_BUILDERS[b.type];
+      if (!build) return "";
+      let body = "";
+      try { body = build(b); }
+      catch (e) {
+        // One malformed block (e.g. an empty series after an edit) must
+        // never blank the whole dashboard.
+        console.warn("JESS: could not draw an impact block.", b.type, e);
+        return "";
+      }
+      return `<article class="impact-card ${IMPACT_WIDE.indexOf(b.type) !== -1 ? "impact-card-wide" : ""}">
+        <h3 class="impact-card-label">${esc(field(b, "label"))}</h3>
+        ${body}
+      </article>`;
+    }).join("");
+
+    section.innerHTML = `
+      <div class="section-inner">
+        <div class="section-head fade-in-up visible">
+          <span class="marker">${esc(field(imp, "title"))}</span>
+          <h2>${esc(field(imp, "subtitle"))}</h2>
+        </div>
+        <div class="impact-grid">${cards}</div>
+      </div>`;
+
+    // Count-up figures animate only once they scroll into view, so the
+    // number isn't already finished before anyone looks at it.
+    const figures = section.querySelectorAll("[data-count]");
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target;
+          animateCount(el, Number(el.dataset.count), el.dataset.suffix);
+          io.unobserve(el);
+        });
+      }, { threshold: 0.4 });
+      figures.forEach((el) => io.observe(el));
+    } else {
+      figures.forEach((el) => animateCount(el, Number(el.dataset.count), el.dataset.suffix));
+    }
+  }
+
+
   function renderStats() {
     document.getElementById("statsGrid").innerHTML = DATA.stats.map(s => `
       <div class="stat-card fade-in-up visible">
@@ -461,6 +793,7 @@
     renderHero();
     renderAboutPoints();
     renderMission();
+    renderImpact();
     renderStats();
     renderPrograms();
     renderJessEdu();

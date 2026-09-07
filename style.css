@@ -1405,3 +1405,82 @@ img.team-photo { object-fit: cover; }
   .jessedu-card { grid-template-columns: 1fr; }
   .jessedu-image { min-height: 180px; }
 }
+
+/* ==========================================================================
+   IMPACT DASHBOARD — 18 chart/graphic types, all inline SVG or CSS.
+   No charting library, so nothing extra to download on a slow connection.
+   ========================================================================== */
+.section-impact { background: var(--color-page-soft, #F4EFE2); }
+.impact-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin-top: 32px;
+}
+.impact-card {
+  background: #fff; border: 1px solid var(--color-border-soft, #DED5C4);
+  border-radius: 14px; padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+/* Charts with an x-axis or a long list need room to stay legible. */
+.impact-card-wide { grid-column: span 2; }
+@media (max-width: 720px) { .impact-card-wide { grid-column: span 1; } }
+
+.impact-card-label {
+  font-size: 0.86rem; font-weight: 700; margin: 0;
+  color: var(--color-text-gray, #6B7280); letter-spacing: 0;
+}
+.impact-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.impact-svg-big { font-size: 26px; font-weight: 700; font-family: inherit; }
+.impact-svg-axis { font-size: 9px; fill: #8B8371; font-family: inherit; }
+.impact-sub { font-size: 0.8rem; color: var(--color-text-gray, #6B7280); }
+.impact-of { font-size: 0.9rem; font-weight: 500; opacity: 0.65; }
+
+.impact-figure { font-size: clamp(2.2rem, 4.4vw, 3rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.impact-figure-sm { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.impact-trend { font-size: 0.84rem; font-weight: 700; }
+.impact-trend.up { color: #2F9E63; }
+.impact-trend.down { color: #A8412F; }
+
+.impact-progress-track { height: 10px; background: #EDE6D6; border-radius: 999px; overflow: hidden; }
+.impact-progress-fill { height: 100%; border-radius: 999px; transition: width 0.8s ease; }
+
+.impact-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; }
+.impact-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--color-text-gray, #6B7280); }
+.impact-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+.impact-hbars { display: flex; flex-direction: column; gap: 9px; }
+.impact-hbar-row { display: flex; align-items: center; gap: 10px; font-size: 0.84rem; }
+.impact-hbar-label { flex: 0 0 34%; color: var(--color-text, #17241C); overflow-wrap: anywhere; }
+.impact-hbar-track { flex: 1; height: 10px; background: #EDE6D6; border-radius: 999px; overflow: hidden; }
+.impact-hbar-fill { display: block; height: 100%; border-radius: 999px; }
+.impact-hbar-val { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.impact-rank { flex: 0 0 18px; font-weight: 800; color: #B07D26; font-variant-numeric: tabular-nums; }
+
+.impact-stack { display: flex; height: 26px; border-radius: 999px; overflow: hidden; background: #EDE6D6; }
+.impact-stack-seg { display: block; height: 100%; }
+
+.impact-pictogram { display: flex; flex-wrap: wrap; gap: 3px; }
+.impact-pict-icon { font-size: 1.05rem; line-height: 1; }
+
+.impact-compare { display: flex; align-items: flex-end; justify-content: center; gap: 14px; height: 150px; }
+.impact-compare-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; flex: 1; gap: 6px; }
+.impact-compare-bar { width: 100%; max-width: 62px; border-radius: 8px 8px 0 0; min-height: 6px; }
+.impact-compare-val { font-weight: 800; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.impact-compare-label { font-size: 0.76rem; color: var(--color-text-gray, #6B7280); }
+.impact-compare-arrow { color: #C4B79E; font-size: 1.2rem; padding-bottom: 42px; }
+
+.impact-heatgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14px, 1fr)); gap: 3px; }
+.impact-heat-cell { aspect-ratio: 1; border-radius: 3px; display: block; }
+
+.impact-timeline { list-style: none; margin: 0; padding: 0 0 0 6px; position: relative; }
+.impact-timeline::before { content: ""; position: absolute; left: 4px; top: 6px; bottom: 6px; width: 2px; background: #E5DDCB; }
+.impact-timeline li { position: relative; padding: 0 0 14px 20px; display: flex; flex-direction: column; }
+.impact-timeline li:last-child { padding-bottom: 0; }
+.impact-tl-dot { position: absolute; left: 0; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: #2F9E63; border: 2px solid #fff; }
+.impact-tl-year { font-weight: 800; font-size: 0.82rem; color: #B07D26; }
+.impact-tl-label { font-size: 0.9rem; }
+
+/* Cards were stretching to match the tallest card in their row, leaving
+   big empty gaps under short ones (a progress bar next to a donut chart).
+   Aligning to the start lets each card be only as tall as its content. */
+.impact-grid { align-items: start; }
