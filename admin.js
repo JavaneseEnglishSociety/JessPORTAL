@@ -723,6 +723,18 @@
       <p class="panel-hint">Editable numbers shown in the About section.</p>
       <div class="admin-card-list" id="statsList"></div>
       <button class="btn btn-outline" id="addStat">+ Add Statistic</button>
+
+      <h3 style="font-size:1.05rem;margin:28px 0 4px;">Impact Dashboard</h3>
+      <p class="panel-hint">The charts and figures shown right under the hero, before anything else on the homepage.</p>
+      <div class="field-row">
+        <div class="field-group"><label><input type="checkbox" id="impactEnabled" style="width:auto;margin-right:6px;">Show the impact dashboard</label></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label>Section title</label><input id="impactTitle"></div>
+        <div class="field-group"><label>Section subtitle</label><input id="impactSubtitle"></div>
+      </div>
+      <div class="admin-card-list" id="impactList" style="margin-top:14px;"></div>
+      <div id="addImpactMenu" class="admin-toolbar" style="flex-wrap:wrap;"></div>
     `;
 
     function fmtWhen(ts) {
@@ -789,6 +801,243 @@
       DATA.stats.push({ id: uid(), number: "0+", label: "New Stat" });
       markDirty(); draw();
     });
+
+    /* ---- Impact Dashboard editor ---- */
+    const IMPACT_COLOR_NAMES = ["green", "blue", "gold", "coral", "purple", "teal"];
+    const IMPACT_TYPE_LABEL = {
+      bigNumber: "Big number", trend: "Trend", progress: "Progress bar", gauge: "Gauge",
+      donut: "Donut chart", pie: "Pie chart", barsV: "Bar chart (vertical)", barsH: "Bar chart (horizontal)",
+      ranked: "Ranked list", line: "Line chart", area: "Area chart", sparkline: "Sparkline",
+      stacked: "Stacked bar", pictogram: "Pictogram (icons)", compare: "Before / after", heatgrid: "Activity grid",
+      timeline: "Timeline"
+    };
+    // Families group the 17 types by which edit form they need, so one
+    // form builder covers several chart types that share a shape.
+    const SERIES_COLOR_TYPES = ["donut", "pie", "stacked"];
+    const SERIES_PLAIN_TYPES = ["barsV", "barsH", "ranked", "line", "area", "sparkline"];
+    const TIMELINE_TYPES = ["timeline"];
+    const HEATGRID_TYPES = ["heatgrid"];
+
+    function colorSelect(current, name) {
+      return `<select data-f="${name}">` + IMPACT_COLOR_NAMES.map(c =>
+        `<option value="${c}" ${c === current ? "selected" : ""}>${c[0].toUpperCase() + c.slice(1)}</option>`).join("") + `</select>`;
+    }
+
+    function impactDefaultFor(type) {
+      const base = { id: uid(), type, label: "New " + (IMPACT_TYPE_LABEL[type] || type), label_id: "", color: "green" };
+      if (type === "bigNumber") return Object.assign(base, { value: 0, suffix: "+" });
+      if (type === "trend") return Object.assign(base, { value: 0, previous: 0, suffix: "" });
+      if (type === "progress") return Object.assign(base, { value: 0, goal: 100 });
+      if (type === "gauge") return Object.assign(base, { value: 0, max: 100, suffix: "%" });
+      if (type === "pictogram") return Object.assign(base, { value: 0, perIcon: 10, icon: "🧑‍🎓" });
+      if (type === "compare") return Object.assign(base, { beforeLabel: "Before", afterLabel: "After", beforeValue: 0, afterValue: 0, suffix: "%" });
+      if (SERIES_COLOR_TYPES.includes(type)) return Object.assign(base, { series: [{ label: "Item A", value: 1, color: "green" }, { label: "Item B", value: 1, color: "blue" }] });
+      if (SERIES_PLAIN_TYPES.includes(type)) return Object.assign(base, { series: [{ label: "A", value: 1 }, { label: "B", value: 2 }] });
+      if (TIMELINE_TYPES.includes(type)) return Object.assign(base, { series: [{ label: "Something happened", value: "2024" }] });
+      if (HEATGRID_TYPES.includes(type)) return Object.assign(base, { series: Array.from({ length: 20 }, () => Math.floor(Math.random() * 5)) });
+      return base;
+    }
+
+    // Builds the type-specific fields (everything below label/colour,
+    // which every block already has in common) for one block.
+    function impactFieldsHtml(b) {
+      if (b.type === "bigNumber") return `
+        <div class="field-row">
+          <div class="field-group"><label>Value</label><input type="number" data-f="value" value="${b.value}"></div>
+          <div class="field-group"><label>Suffix</label><input data-f="suffix" value="${esc(b.suffix || "")}" placeholder="e.g. +"></div>
+          <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
+        </div>`;
+      if (b.type === "trend") return `
+        <div class="field-row">
+          <div class="field-group"><label>Current value</label><input type="number" data-f="value" value="${b.value}"></div>
+          <div class="field-group"><label>Previous value</label><input type="number" data-f="previous" value="${b.previous}"></div>
+          <div class="field-group"><label>Suffix</label><input data-f="suffix" value="${esc(b.suffix || "")}"></div>
+          <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
+        </div>`;
+      if (b.type === "progress") return `
+        <div class="field-row">
+          <div class="field-group"><label>Current value</label><input type="number" data-f="value" value="${b.value}"></div>
+          <div class="field-group"><label>Goal</label><input type="number" data-f="goal" value="${b.goal}"></div>
+          <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
+        </div>`;
+      if (b.type === "gauge") return `
+        <div class="field-row">
+          <div class="field-group"><label>Value</label><input type="number" data-f="value" value="${b.value}"></div>
+          <div class="field-group"><label>Max</label><input type="number" data-f="max" value="${b.max}"></div>
+          <div class="field-group"><label>Suffix</label><input data-f="suffix" value="${esc(b.suffix || "")}" placeholder="e.g. %"></div>
+          <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
+        </div>`;
+      if (b.type === "pictogram") return `
+        <div class="field-row">
+          <div class="field-group"><label>Total value</label><input type="number" data-f="value" value="${b.value}"></div>
+          <div class="field-group"><label>One icon =</label><input type="number" data-f="perIcon" value="${b.perIcon}"></div>
+          <div class="field-group"><label>Icon (emoji)</label><input data-f="icon" value="${esc(b.icon || "")}"></div>
+          <div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div>
+        </div>`;
+      if (b.type === "compare") return `
+        <div class="field-row">
+          <div class="field-group"><label>Before label</label><input data-f="beforeLabel" value="${esc(b.beforeLabel || "")}"></div>
+          <div class="field-group"><label>Before value</label><input type="number" data-f="beforeValue" value="${b.beforeValue}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field-group"><label>After label</label><input data-f="afterLabel" value="${esc(b.afterLabel || "")}"></div>
+          <div class="field-group"><label>After value</label><input type="number" data-f="afterValue" value="${b.afterValue}"></div>
+        </div>
+        <div class="field-row"><div class="field-group"><label>Suffix</label><input data-f="suffix" value="${esc(b.suffix || "")}" placeholder="e.g. %"></div></div>`;
+      if (SERIES_COLOR_TYPES.includes(b.type)) return seriesEditorHtml(b, true, false);
+      if (SERIES_PLAIN_TYPES.includes(b.type)) return `
+        <div class="field-row"><div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div></div>
+        ` + seriesEditorHtml(b, false, false);
+      if (TIMELINE_TYPES.includes(b.type)) return seriesEditorHtml(b, false, true);
+      if (HEATGRID_TYPES.includes(b.type)) return `
+        <div class="field-row"><div class="field-group"><label>Colour</label>${colorSelect(b.color, "color")}</div></div>
+        <div class="field-group"><label>Values (comma-separated, one per square, 0 and up)</label>
+        <input data-heatgrid-series value="${esc((b.series || []).join(","))}"></div>`;
+      return "";
+    }
+
+    // series is an array of {label, value} (+ colour for the family that
+    // needs per-slice colour, e.g. pie/donut). Rendered as repeatable rows.
+    function seriesEditorHtml(b, withColor, valueIsText) {
+      const rows = (b.series || []).map((s, si) => `
+        <div class="field-row impact-series-row" data-si="${si}">
+          <div class="field-group"><label>Label</label><input data-sf="label" value="${esc(s.label || "")}"></div>
+          <div class="field-group"><label>${valueIsText ? "Year / value" : "Value"}</label>
+            <input data-sf="value" ${valueIsText ? "" : 'type="number"'} value="${esc(String(s.value != null ? s.value : ""))}"></div>
+          ${withColor ? `<div class="field-group"><label>Colour</label>` + colorSelect(s.color, "seriesColor") + `</div>` : ""}
+          <button type="button" class="danger" data-del-series style="align-self:flex-end;">Remove</button>
+        </div>`).join("");
+      return `<div class="impact-series-editor">${rows}</div>
+        <button type="button" class="btn btn-outline btn-sm" data-add-series>+ Add row</button>`;
+    }
+
+    function drawImpact() {
+      const imp = DATA.impact;
+      root.querySelector("#impactEnabled").checked = imp.enabled !== false;
+      root.querySelector("#impactTitle").value = imp.title || "";
+      root.querySelector("#impactSubtitle").value = imp.subtitle || "";
+
+      root.querySelector("#impactList").innerHTML = imp.blocks.map((b, i) => `
+        <div class="admin-item-card impact-drag-card" data-i="${i}" draggable="false">
+          <div class="field-row">
+            <div class="field-group impact-drag-handle-group" style="flex:0 0 auto;">
+              <label>&nbsp;</label>
+              <span class="impact-drag-handle" title="Drag to reorder">⠿</span>
+            </div>
+            <div class="field-group" style="flex:0 0 auto;"><label>Type</label>
+              <input value="${esc(IMPACT_TYPE_LABEL[b.type] || b.type)}" disabled style="opacity:.7;"></div>
+            <div class="field-group"><label>Label</label><input data-f="label" value="${esc(b.label || "")}"></div>
+          </div>
+          ${impactFieldsHtml(b)}
+          <div class="admin-item-actions">
+            <button class="danger" data-del>Remove</button>
+          </div>
+        </div>`).join("");
+
+      // Drag-to-reorder: HTML5 native drag and drop, no library. Dragging
+      // a card over another swaps their position in DATA.impact.blocks
+      // immediately (so the on-screen order and the saved order can never
+      // drift apart), then redraws once on drop.
+      let dragFromIndex = null;
+      const listEl = root.querySelector("#impactList");
+      listEl.querySelectorAll(".impact-drag-card").forEach((card) => {
+        // draggable stays "false" until the mouse actually presses down
+        // on the handle, so grabbing text inside a label/value input to
+        // edit it never gets mistaken for starting a drag.
+        const handle = card.querySelector(".impact-drag-handle");
+        handle.addEventListener("mousedown", () => card.setAttribute("draggable", "true"));
+        handle.addEventListener("touchstart", () => card.setAttribute("draggable", "true"), { passive: true });
+        card.addEventListener("dragstart", (e) => {
+          dragFromIndex = Number(card.dataset.i);
+          card.classList.add("is-dragging");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", () => {
+          card.classList.remove("is-dragging");
+          card.setAttribute("draggable", "false");
+          listEl.querySelectorAll(".impact-drag-card").forEach((c) => c.classList.remove("drag-over"));
+        });
+        card.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          if (Number(card.dataset.i) === dragFromIndex) return;
+          card.classList.add("drag-over");
+        });
+        card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+        card.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const toIndex = Number(card.dataset.i);
+          if (dragFromIndex === null || toIndex === dragFromIndex) return;
+          const [moved] = imp.blocks.splice(dragFromIndex, 1);
+          imp.blocks.splice(toIndex, 0, moved);
+          dragFromIndex = null;
+          markDirty();
+          drawImpact();
+        });
+      });
+
+      root.querySelectorAll("#impactList .admin-item-card").forEach((card) => {
+        const i = Number(card.dataset.i);
+        const b = imp.blocks[i];
+
+        card.querySelectorAll(":scope > .field-row input[data-f], :scope > .field-row select[data-f]").forEach((inp) => {
+          inp.addEventListener("input", () => {
+            const raw = inp.value;
+            b[inp.dataset.f] = inp.type === "number" ? Number(raw) : raw;
+            markDirty();
+          });
+        });
+
+        // Heatgrid: one comma-separated field maps to the plain number array.
+        const hg = card.querySelector("[data-heatgrid-series]");
+        if (hg) hg.addEventListener("input", () => {
+          b.series = hg.value.split(",").map((v) => Number(v.trim()) || 0);
+          markDirty();
+        });
+
+        // Series rows (pie/donut/stacked/bars/line/area/sparkline/timeline).
+        card.querySelectorAll(".impact-series-row").forEach((row) => {
+          const si = Number(row.dataset.si);
+          row.querySelectorAll("[data-sf]").forEach((inp) => {
+            inp.addEventListener("input", () => {
+              b.series[si][inp.dataset.sf] = inp.type === "number" ? Number(inp.value) : inp.value;
+              markDirty();
+            });
+          });
+          const colorSel = row.querySelector("select[data-f='seriesColor']");
+          if (colorSel) colorSel.addEventListener("input", () => { b.series[si].color = colorSel.value; markDirty(); });
+          row.querySelector("[data-del-series]").addEventListener("click", () => {
+            b.series.splice(si, 1); markDirty(); drawImpact();
+          });
+        });
+        const addSeriesBtn = card.querySelector("[data-add-series]");
+        if (addSeriesBtn) addSeriesBtn.addEventListener("click", () => {
+          b.series = b.series || [];
+          b.series.push(SERIES_COLOR_TYPES.includes(b.type)
+            ? { label: "New", value: 1, color: "green" }
+            : TIMELINE_TYPES.includes(b.type) ? { label: "New milestone", value: "2026" } : { label: "New", value: 1 });
+          markDirty(); drawImpact();
+        });
+
+        card.querySelector("[data-del]").addEventListener("click", () => {
+          imp.blocks.splice(i, 1); markDirty(); drawImpact();
+          toast("Chart removed. Click \"Save Changes\" to publish.");
+        });
+      });
+    }
+
+    root.querySelector("#impactEnabled").addEventListener("change", (e) => { DATA.impact.enabled = e.target.checked; markDirty(); });
+    root.querySelector("#impactTitle").addEventListener("input", (e) => { DATA.impact.title = e.target.value; markDirty(); });
+    root.querySelector("#impactSubtitle").addEventListener("input", (e) => { DATA.impact.subtitle = e.target.value; markDirty(); });
+
+    root.querySelector("#addImpactMenu").innerHTML = Object.keys(IMPACT_TYPE_LABEL).map((t) =>
+      `<button type="button" class="btn btn-outline btn-sm" data-add-type="${t}">+ ${IMPACT_TYPE_LABEL[t]}</button>`).join("");
+    root.querySelectorAll("[data-add-type]").forEach((btn) => btn.addEventListener("click", () => {
+      DATA.impact.blocks.push(impactDefaultFor(btn.dataset.addType));
+      markDirty(); drawImpact();
+      toast("Chart added. Click \"Save Changes\" to publish.");
+    }));
+
+    drawImpact();
   }
 
   /* ---- Programs panel ---- */
