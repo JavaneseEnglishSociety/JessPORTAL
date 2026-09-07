@@ -21,6 +21,12 @@
   let lastSaveFailureToastAt = 0;
   let isDirty = false;
   let isSaving = false;
+  // Hard block, not just a visual warning: while true, persistNow()
+  // refuses to write at all, no matter what the Save button says or
+  // whether something else re-enables it. A banner that can be
+  // dismissed or ignored doesn't actually stop the disaster this is
+  // guarding against — only refusing the write does.
+  let dataIsUnsafeToSave = false;
 
   // Reference to the persistent Save button + its status text, set once
   // per dashboard injection by wireDashboardNav() (see below) since the
@@ -35,6 +41,12 @@
 
   function updateSaveUI() {
     if (!saveBtn || !saveStatusEl) return;
+    if (dataIsUnsafeToSave) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving disabled";
+      saveStatusEl.textContent = "See the warning above before making changes.";
+      return;
+    }
     if (isSaving) {
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving…";
@@ -45,6 +57,51 @@
     saveBtn.textContent = isDirty ? "Save Changes" : "Saved";
     saveBtn.classList.toggle("has-changes", isDirty);
     saveStatusEl.textContent = isDirty ? "You have unsaved changes." : "";
+  }
+
+  // Shown when a load had to fall back to a cached copy instead of a
+  // fresh read from Firestore — e.g. because firestore.rules hadn't
+  // been republished yet for a new collection. Showing this AND
+  // hard-blocking Save is what stops an incomplete view (missing
+  // team members, gallery items, anything else split into its own
+  // collection) from ever being mistaken for the real current state
+  // and saved over it.
+  function showStaleDataWarning() {
+    dataIsUnsafeToSave = true;
+    updateSaveUI();
+    // adminContent is the actual injected container in this app (see
+    // wireDashboardNav below); fully inline styles here since this
+    // banner can't depend on any particular CSS class existing.
+    const host = document.getElementById("adminContent") || document.body;
+    const banner = document.createElement("div");
+    banner.id = "staleDataBanner";
+    banner.style.cssText =
+      "position:sticky;top:0;z-index:50;margin-bottom:16px;padding:14px 18px;" +
+      "background:#FDECEA;border:2px solid #E57373;border-radius:8px;" +
+      "color:#7A1F1F;font-size:0.92rem;line-height:1.5;";
+    banner.innerHTML =
+      "<strong>⚠️ Could not fully load the latest data from Firestore.</strong> " +
+      "What you're seeing below may be missing recent changes (team members, gallery items, or anything else added since this browser's last successful load). " +
+      "<strong>Saving right now could permanently delete anything not shown here.</strong> " +
+      "This usually means firestore.rules hasn't been republished yet for a newer collection — check Firebase Console, then " +
+      '<button type="button" style="margin-left:8px;padding:6px 14px;border-radius:6px;border:1px solid #7A1F1F;background:#fff;color:#7A1F1F;cursor:pointer;font-weight:600;" id="staleDataRetryBtn">Try loading again</button>';
+    host.insertBefore(banner, host.firstChild);
+    document.getElementById("staleDataRetryBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("staleDataRetryBtn");
+      btn.disabled = true; btn.textContent = "Loading…";
+      const fresh = await window.JESSData.loadOnce();
+      if (window.JESSData.loadWasStale() || window.JESSData.splitFieldsFailedLastLoad()) {
+        toast("Still couldn't reach everything — check firestore.rules is published, then try again.");
+        btn.disabled = false; btn.textContent = "Try loading again";
+        return;
+      }
+      DATA = fresh;
+      dataIsUnsafeToSave = false;
+      banner.remove();
+      renderAdminPanel("content");
+      updateSaveUI();
+      toast("Reloaded successfully — everything is now up to date.");
+    });
   }
 
   // Reads the actual Firestore error from the failed write (see
@@ -71,6 +128,10 @@
   // The actual network write — only ever called from the Save button now.
   function persistNow() {
     if (!DATA || isSaving) return Promise.resolve(false);
+    if (dataIsUnsafeToSave) {
+      toast("⚠️ Saving is disabled until the data reloads successfully — see the warning banner above.");
+      return Promise.resolve(false);
+    }
     isSaving = true;
     updateSaveUI();
     return persist(DATA).then((ok) => {
@@ -271,6 +332,16 @@
       window.JESSData.loadOnce().then((data) => {
         DATA = data;
         showDashboard();
+        // If any part of this load had to fall back to a cached copy
+        // instead of a fresh Firestore read, warn loudly rather than
+        // silently. Saving in this state is exactly how a handful of
+        // real, un-fetched team members (or gallery items, or anything
+        // else in a split collection) could get permanently deleted:
+        // the save logic treats "not in what I'm currently showing" as
+        // "the admin removed this on purpose."
+        if (window.JESSData.loadWasStale() || window.JESSData.splitFieldsFailedLastLoad()) {
+          showStaleDataWarning();
+        }
       });
     } else {
       if (user) {
@@ -897,11 +968,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing photo…");
-          compressImage(file).then((url) => {
+          window.JESSData.uploadImageFile(file, "team-photos", 480, 0.78).then((url) => {
             DATA.team[i].photo = url;
             markDirty(); draw();
-            toast("Photo added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+            toast("Photo uploaded. Click \"Save Changes\" to publish.");
+          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.team.splice(i, 1); markDirty(); draw(); toast("Team member removed. Click \"Save Changes\" to publish.");
@@ -950,11 +1021,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing photo…");
-          compressImage(file).then((url) => {
+          window.JESSData.uploadImageFile(file, "testimonial-photos", 480, 0.78).then((url) => {
             DATA.testimonials[i].photo = url;
             markDirty(); draw();
-            toast("Photo added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+            toast("Photo uploaded. Click \"Save Changes\" to publish.");
+          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.testimonials.splice(i, 1); markDirty(); draw(); toast("Testimonial removed. Click \"Save Changes\" to publish.");
@@ -997,11 +1068,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing image…");
-          compressImage(file, 640, 0.75).then((url) => {
+          window.JESSData.uploadImageFile(file, "gallery", 640, 0.75).then((url) => {
             DATA.gallery[i].img = url;
             markDirty(); draw();
-            toast("Image added — click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+            toast("Image uploaded. Click \"Save Changes\" to publish.");
+          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
         });
         card.querySelector("[data-del]").addEventListener("click", () => {
           DATA.gallery.splice(i, 1); markDirty(); draw(); toast("Image removed. Click \"Save Changes\" to publish.");
@@ -1102,7 +1173,7 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing logo…");
-          compressImage(file, 480, 0.85).then((url) => {
+          window.JESSData.uploadImageFile(file, "partner-logos", 480, 0.85).then((url) => {
             DATA.partners[i].logo = url;
             DATA.partners[i].logoZoom = 1;
             DATA.partners[i].logoPosX = 50;
@@ -1270,11 +1341,11 @@
           const file = e.target.files[0];
           if (!file) return;
           toast("Processing image…");
-          compressImage(file, 640, 0.72).then((url) => {
+          window.JESSData.uploadImageFile(file, "news-images", 640, 0.72).then((url) => {
             item.image = url;
             markDirty(); draw();
-            toast("Image added. Click \"Save Changes\" to publish.");
-          }).catch(() => toast("Could not process that image. Try a different file."));
+            toast("Image uploaded. Click \"Save Changes\" to publish.");
+          }).catch((err) => toast((err && err.message) || "Could not upload that image."));
         });
         const removeBtn = card.querySelector("[data-remove-image]");
         if (removeBtn) removeBtn.addEventListener("click", () => {
@@ -1601,11 +1672,11 @@
       const file = e.target.files[0];
       if (!file) return;
       toast("Processing image…");
-      compressImage(file, 640, 0.75).then((url) => {
+      window.JESSData.uploadImageFile(file, "jessedu-images", 640, 0.75).then((url) => {
         DATA.jessEdu.image = url;
         markDirty(); renderAdminPanel("jessedu");
-        toast("Image added. Click \"Save Changes\" to publish.");
-      }).catch(() => toast("Could not process that image. Try a different file."));
+        toast("Image uploaded. Click \"Save Changes\" to publish.");
+      }).catch((err) => toast((err && err.message) || "Could not upload that image."));
     });
     const removeImg = root.querySelector("#jeRemoveImage");
     if (removeImg) removeImg.addEventListener("click", () => {

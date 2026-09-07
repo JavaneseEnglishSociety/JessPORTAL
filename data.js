@@ -409,11 +409,29 @@ function splitCollectionRef(field) {
   return fsFns.collection(db, field);
 }
 
+let anySplitFieldFailedLastLoad = false;
+function splitFieldsFailedLastLoad() { return anySplitFieldFailedLastLoad; }
+
 async function loadSplitCollections() {
   const out = {};
+  anySplitFieldFailedLastLoad = false;
+  // Each field fetches independently: if one collection's rules aren't
+  // published yet (a very plausible state right after this change first
+  // deploys) and Firestore rejects that ONE read, the other four still
+  // load correctly instead of the whole call throwing and silently
+  // falling back to a possibly stale full-site cache — which is
+  // precisely how a handful of the newest team members could look like
+  // they'd vanished when they never actually left Firestore at all.
   await Promise.all(SPLIT_FIELDS.map(async (field) => {
-    const snap = await fsFns.getDocs(splitCollectionRef(field));
-    out[field] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    try {
+      const snap = await fsFns.getDocs(splitCollectionRef(field));
+      out[field] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.warn(`JESS: could not load the "${field}" collection (rules not published yet?). Keeping the previous cached copy for this field only.`, e);
+      anySplitFieldFailedLastLoad = true;
+      const cached = getLocalCache();
+      out[field] = (cached && cached[field]) || [];
+    }
   }));
   return out;
 }
@@ -543,9 +561,12 @@ function subscribe(callback) {
  * ONE-TIME LOAD (used by the admin portal so an in-progress edit
  * doesn't get overwritten mid-keystroke by a live snapshot)
  * ------------------------------------------------------------------ */
+let lastLoadFellBackToCache = false;
+function loadWasStale() { return lastLoadFellBackToCache; }
+
 async function loadOnce() {
   const cached = getLocalCache();
-  if (!firebaseReady) return cached || defaultData();
+  if (!firebaseReady) { lastLoadFellBackToCache = true; return cached || defaultData(); }
 
   try {
     const snap = await fsFns.getDoc(siteDocRef());
@@ -559,9 +580,18 @@ async function loadOnce() {
     const withSplit = await loadAndMergeSplitCollections(raw);
     const merged = mergeWithDefaults(withSplit);
     setLocalCache(merged);
+    lastLoadFellBackToCache = false;
     return merged;
   } catch (e) {
+    // This USED to fail silently: the admin panel would just show
+    // whatever was in the browser's local cache with no indication
+    // anything had gone wrong, which is exactly how a stale, incomplete
+    // cache could look identical to "this is the real current site" —
+    // team members who were added since that cache was captured would
+    // simply not be there, with nothing on screen suggesting why.
+    // loadWasStale() lets admin.js show an explicit warning instead.
     console.warn("JESS: could not reach Firestore, using local cache/defaults.", e);
+    lastLoadFellBackToCache = true;
     return cached || defaultData();
   }
 }
@@ -1312,7 +1342,7 @@ window.JESSData = {
   submitApplication, getApplicationByCode, listApplications, updateApplicationStatus, deleteApplication, DEPARTMENTS,
   EVENT_TAGS, getLang, setLang, t, tagLabel, field, UI_STRINGS,
   trackVisit, startPresenceHeartbeat, getAnalyticsTotals, listOnlinePresence, clearStalePresence,
-  uploadVideoFile, uploadImageFile, getLastSaveError,
+  uploadVideoFile, uploadImageFile, getLastSaveError, loadWasStale, splitFieldsFailedLastLoad,
   firebaseReady: () => firebaseReady
 };
 
