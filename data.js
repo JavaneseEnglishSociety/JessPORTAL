@@ -388,6 +388,17 @@ const siteDocRef = () => fsFns.doc(db, DOC_COLLECTION, DOC_ID);
  * ------------------------------------------------------------------ */
 const SPLIT_FIELDS = ["team", "testimonials", "gallery", "partners", "news"];
 
+// jessEdu is a single object, not a list of items, so it doesn't fit the
+// SPLIT_FIELDS pattern above — but it holds its own image, and older
+// saved sites may still have that image sitting as embedded base64 from
+// before uploads moved to Storage. Left inside the core document, that
+// alone can be large enough to keep jess/site over the 1MB limit even
+// after every genuinely large field is stripped out above. Same fix,
+// applied to a single field instead of an array: it gets its own tiny
+// document too.
+const SINGLETON_COLLECTION = "config";
+const SINGLETON_FIELDS = ["jessEdu"];
+
 // Which item IDs this tab has actually seen written to each collection,
 // captured on load and updated after every save. Diffing against this
 // on the next save is how a removed item gets deleted from Firestore
@@ -441,6 +452,25 @@ async function loadAndMergeSplitCollections(coreData) {
     coreData[field] = split[field];
     knownSplitIds[field] = new Set(split[field].map((item) => item.id));
   }
+
+  // Singleton fields (currently just jessEdu): same idea, one field
+  // instead of a list. If its own document doesn't exist yet but the
+  // core document still has real content for it (an image especially),
+  // copy it over once; from then on the singleton document is
+  // authoritative.
+  for (const field of SINGLETON_FIELDS) {
+    try {
+      const snap = await fsFns.getDoc(fsFns.doc(db, SINGLETON_COLLECTION, field));
+      if (snap.exists()) {
+        coreData[field] = snap.data();
+      } else if (coreData[field] && Object.keys(coreData[field]).length) {
+        await fsFns.setDoc(fsFns.doc(db, SINGLETON_COLLECTION, field), coreData[field]);
+      }
+    } catch (e) {
+      console.warn(`JESS: could not load/migrate the ${field} singleton; using the core document's copy for now.`, e);
+    }
+  }
+
   return coreData;
 }
 
@@ -460,11 +490,15 @@ async function saveSplitCollections(data) {
 
     knownSplitIds[field] = currentIds;
   }
+  for (const field of SINGLETON_FIELDS) {
+    await fsFns.setDoc(fsFns.doc(db, SINGLETON_COLLECTION, field), data[field] || {});
+  }
 }
 
 function stripSplitFields(data) {
   const core = { ...data };
   SPLIT_FIELDS.forEach((field) => { delete core[field]; });
+  SINGLETON_FIELDS.forEach((field) => { delete core[field]; });
   return core;
 }
 

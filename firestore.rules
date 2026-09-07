@@ -29,6 +29,45 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+
+    // team, testimonials, gallery, partners, and news each moved out of
+    // jess/site into their own collection (see data.js's SPLIT_FIELDS),
+    // one document per item, specifically so no single item's photo can
+    // push the whole site's core document toward Firestore's 1MB
+    // per-document limit. Same open posture as jess/site above, for the
+    // same reason: no real Firebase Auth session exists to check here.
+    match /team/{itemId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /testimonials/{itemId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /gallery/{itemId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /partners/{itemId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /news/{itemId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // jessEdu (a single object, not a list) moved out of jess/site the
+    // same way and for the same reason: its image could still be a
+    // large embedded base64 string from before uploads moved to
+    // Storage, and left inside the core document that alone could
+    // keep it over the 1MB limit even with team/gallery/etc. already
+    // split out.
+    match /config/{fieldId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     match /messages/{messageId} {
       allow create: if true;
       allow read, delete: if true;
