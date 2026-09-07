@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JESS — Restore Events</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; color: #17241C; background: #FBF8F1; line-height: 1.6; }
+  h1 { font-size: 1.5rem; margin-bottom: 6px; }
+  .sub { color: #6B7280; margin-bottom: 22px; }
+  .box { background: #fff; border: 1px solid #DED5C4; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  .warn { background: #FFF8E1; border-color: #E6B800; color: #5A4300; }
+  .ok { background: #E7F1EA; border-color: #2F7D54; color: #1B5233; }
+  .err { background: #FBEAE7; border-color: #A8412F; color: #7A1F1F; }
+  button { font: inherit; font-weight: 700; padding: 12px 22px; border-radius: 8px; border: none; background: #2F7D54; color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.secondary { background: #fff; color: #17241C; border: 1px solid #C4B79E; }
+  pre { background: #F4EFE3; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: .82rem; white-space: pre-wrap; }
+  ul { margin: 8px 0 0 18px; }
+  li { margin-bottom: 4px; }
+  code { background: #F4EFE3; padding: 1px 5px; border-radius: 4px; font-size: .88rem; }
+</style>
+</head>
+<body>
+
+<h1>Restore JESS events</h1>
+<p class="sub">This tool writes back <strong>only</strong> the <code>events</code> field of your site. Every other field — team, gallery, partners, news, programs, contact details, theme — is read and written back exactly as it already is, untouched.</p>
+
+<div class="box warn">
+  <strong>Read this first.</strong>
+  <ul>
+    <li>Click <strong>Load current site</strong> first. It shows you what events are in Firestore <em>right now</em>, before changing anything.</li>
+    <li>If your real events are already there, close this page. Nothing needs restoring.</li>
+    <li>Only click Restore if the events shown are wrong or missing.</li>
+    <li>A backup of the current state is downloaded automatically before any write.</li>
+  </ul>
+</div>
+
+<div class="box">
+  <button id="loadBtn">Load current site</button>
+  <button id="restoreBtn" class="secondary" disabled>Restore the 4 EduTrip events</button>
+</div>
+
+<div id="status"></div>
+<div id="current"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+(function () {
+  const statusEl = document.getElementById("status");
+  const currentEl = document.getElementById("current");
+  const loadBtn = document.getElementById("loadBtn");
+  const restoreBtn = document.getElementById("restoreBtn");
+
+  function say(html, cls) {
+    statusEl.innerHTML = '<div class="box ' + (cls || "") + '">' + html + '</div>';
+  }
+
+  // Rebuilt from the event cards visible in this project's own
+  // screenshots: the same titles, dates, times, venue addresses, colours
+  // and tags that were on the live site.
+  const RESTORED_EVENTS = [
+    {
+      title: "JESS EduTrip × PYI Kemang Pratama",
+      date: "2026-09-05", time: "09:00",
+      desc: "JESS EduTrip brings volunteers to PYI Kemang Pratama to provide free, interactive English lessons through games, activities, and conversations, making learning fun and accessible.",
+      location: "Jl. Kemang Pratama Raya No.14, RT.001/RW.011, Sepanjang Jaya, Kec. Rawalumbu, Kota Bks, Jawa Barat 17116",
+      color: "#7C8B3E", recurring: "none",
+      tags: ["Offline", "Members only"],
+      registration: { enabled: true, mode: "form", url: "", askWhy: false, closed: false }
+    },
+    {
+      title: "EduTrip: English Through Art x Panti Asuhan Marhamah Robbani",
+      date: "2026-09-13", time: "09:00",
+      desc: "JESS plans to visit Panti Asuhan Marhamah Robbani to teach vocabulary through drawing, labeling, and simple crafts, giving shy kids a way into English through their hands first.",
+      location: "Jl. Mahoni 5 No.9 Blk C. 6, RT.003/RW.010, Pekayon Jaya, Kec. Bekasi Sel., Kota Bks, Jawa Barat 17148",
+      color: "#E08E45", recurring: "none",
+      tags: ["Offline", "Members only"],
+      registration: { enabled: true, mode: "form", url: "", askWhy: false, closed: false }
+    },
+    {
+      title: "EduTrip: ABC Foundations x Panti Asuhan Marhamah Robbani",
+      date: "2026-09-20", time: "09:00",
+      desc: "JESS plans to visit Panti Asuhan Marhamah Robbani to teach the English alphabet and letter sounds through repetition and simple games, building the foundation children need to read and speak English with confidence.",
+      location: "Jl. Mahoni 5 No.9 Blk C. 6, RT.003/RW.010, Pekayon Jaya, Kec. Bekasi Sel., Kota Bks, Jawa Barat 17148",
+      color: "#4A9FD8", recurring: "none",
+      tags: ["Offline", "Members only"],
+      registration: { enabled: true, mode: "form", url: "", askWhy: false, closed: false }
+    },
+    {
+      title: "EduTrip: Numbers & Counting x Panti Asuhan Marhamah Robbani",
+      date: "2026-09-26", time: "09:00",
+      desc: "JESS plans to visit Panti Asuhan Marhamah Robbani to teach numbers and counting in English using everyday objects and activities, giving children practical vocabulary they can use in real life, not just memorize.",
+      location: "Jl. Mahoni 5 No.9 Blk C. 6, RT.003/RW.010, Pekayon Jaya, Kec. Bekasi Sel., Kota Bks, Jawa Barat 17148",
+      color: "#8E4585", recurring: "none",
+      tags: ["Offline", "Members only"],
+      registration: { enabled: true, mode: "form", url: "", askWhy: false, closed: false }
+    }
+  ];
+
+  let db = null, currentDoc = null;
+
+  function initFirebase() {
+    if (db) return true;
+    const cfg = window.FIREBASE_CONFIG;
+    if (!cfg || !cfg.apiKey) { say("firebase-config.js did not load. Put this file in the same folder as firebase-config.js.", "err"); return false; }
+    firebase.initializeApp(cfg);
+    db = firebase.firestore();
+    return true;
+  }
+
+  function uid() { return Math.random().toString(36).slice(2, 12); }
+
+  loadBtn.addEventListener("click", async () => {
+    if (!initFirebase()) return;
+    loadBtn.disabled = true;
+    say("Reading jess/site …");
+    try {
+      const snap = await db.collection("jess").doc("site").get();
+      if (!snap.exists) {
+        say("The jess/site document does not exist or is not readable. Check that firestore.rules is published. <strong>Nothing was changed.</strong>", "err");
+        loadBtn.disabled = false;
+        return;
+      }
+      currentDoc = snap.data();
+      const evts = Array.isArray(currentDoc.events) ? currentDoc.events : [];
+      const list = evts.length
+        ? "<ul>" + evts.map(e => "<li><strong>" + (e.date || "?") + "</strong> — " + (e.title || "(untitled)") + "</li>").join("") + "</ul>"
+        : "<p>The events list is <strong>empty</strong>.</p>";
+      currentEl.innerHTML =
+        '<div class="box"><strong>Events currently in Firestore (' + evts.length + '):</strong>' + list +
+        '<p style="margin-top:12px;font-size:.9rem;color:#6B7280;">If these are your real events, stop here and close this page.</p></div>';
+      say("Loaded. Nothing has been changed yet.", "ok");
+      restoreBtn.disabled = false;
+      loadBtn.disabled = false;
+    } catch (err) {
+      say("Could not read: " + (err && err.message) + "<br><strong>Nothing was changed.</strong>", "err");
+      loadBtn.disabled = false;
+    }
+  });
+
+  restoreBtn.addEventListener("click", async () => {
+    if (!currentDoc) { say("Click “Load current site” first.", "err"); return; }
+    if (!confirm("This replaces ONLY the events list with the 4 restored EduTrip events. Everything else stays exactly as it is. Continue?")) return;
+    restoreBtn.disabled = true;
+    say("Backing up, then writing …");
+    try {
+      // Always download a full backup of the pre-change state first.
+      const blob = new Blob([JSON.stringify(currentDoc, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "jess-site-backup-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      const events = RESTORED_EVENTS.map(e => Object.assign({ id: uid() }, e));
+      // update() touches ONLY this field. It does not rewrite the whole
+      // document, so no other field can be affected by this operation.
+      await db.collection("jess").doc("site").update({ events: events });
+
+      say("<strong>Restored.</strong> " + events.length + " events written. A backup of the previous state was downloaded to this device. Reload your site to see them.", "ok");
+      currentEl.innerHTML = "";
+    } catch (err) {
+      say("Write failed: " + (err && err.message) + "<br>Your data was <strong>not</strong> modified.", "err");
+      restoreBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
